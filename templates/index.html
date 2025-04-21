@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Emotion Analyzer</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
+</head>
+<body>
+  <header><h1>Emotion Analyzer</h1></header>
+  <main>
+    <button id="recordBtn">🎤 Record</button>
+    <button id="stopBtn" disabled>⏹ Stop</button>
+    <p id="status"></p>
+
+    <!-- Chat box (hidden until after first analysis) -->
+    <div id="chat" class="hidden">
+      <div id="chatHistory" class="chat-history"></div>
+      <div class="chat-input">
+        <input type="text" id="userMessage" placeholder="Type your message…" />
+        <button id="sendBtn">Send</button>
+      </div>
+    </div>
+  </main>
+  <script src="{{ url_for('static', filename='scripts.js') }}"></script>
+</body>
+</html>
+
+
+
+<!-- <!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Ora Emotion Analyzer</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+  <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" />
+
+  <script src="{{ url_for('static', filename='scripts.js') }}" defer></script>
+
+
+
+</head>
+<body>
+  <header>
+    <h1>Emotion Analyzer</h1>
+  </header>
+
+  <main>
+    <button id="recordBtn">🎤 Record</button>
+    <button id="stopBtn" disabled>⏹ Stop</button>
+    
+
+    <p id="status">Press “Record” and speak for a few seconds.</p>
+    <p id="emotionLabel"></p>
+    <p id="chatReply"></p>
+
+  
+    <div id="result" class="hidden">
+      <p><strong>Emotion:</strong> <span id="emotionLabel">—</span></p>
+      <p><strong>Reply:</strong> <span id="chatReply">—</span></p>
+    </div>
+    <div id="chat" class="hidden">
+        <div id="chatHistory" class="chat-history"></div>
+        <div class="chat-input">
+          <input type="text" id="userMessage" placeholder="Type your message…" />
+          <button id="sendBtn">Send</button>
+        </div>
+      </div>
+      
+  </main>
+</body>
+</html> -->
