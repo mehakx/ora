@@ -1,1 +1,6 @@
 
+uploads/*.wav
+.env
+*.pkl
+uploads/
+
