@@ -49,7 +49,9 @@ def predict():
 
         # Build the JSON request for Hume Batch API
         payload = {
-            "models": ["prosody"],
+            "models": {
+                "prosody": {}
+            },
             "data": [
                 {
                     "name": "recording.wav",
@@ -138,18 +140,6 @@ def chat():
         print("❌ Chat error:")
         traceback.print_exc()
         return jsonify({"error": "Something went wrong during chat."}), 500
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
