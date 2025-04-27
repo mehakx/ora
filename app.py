@@ -47,7 +47,7 @@ def uploadcare_proxy():
                 "filename": file.filename,
                 "size": file_size,
                 "content_type": file.content_type,
-                "pub_key": UPLOADCARE_PUB_KEY
+                "pub_key": os.getenv("fa6ab5beadb496664775")   
             }
         )
 
@@ -78,7 +78,7 @@ def uploadcare_proxy():
         # Step 3: Complete multipart upload
         complete_response = requests.post(
             'https://upload.uploadcare.com/multipart/complete/',
-            json={"uuid": uuid_value, "pub_key": UPLOADCARE_PUB_KEY}
+            json={"uuid": uuid_value, "pub_key": fa6ab5beadb496664775}
         )
 
         print(f"Complete upload response: {complete_response.text}")
