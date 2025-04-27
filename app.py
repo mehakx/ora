@@ -2,11 +2,12 @@ import os
 import uuid
 import traceback
 import io
+import base64
+import requests
 from flask import Flask, request, jsonify, render_template, session
 from flask_cors import CORS
 from pydub import AudioSegment
 from dotenv import load_dotenv
-from hume import HumeClient
 
 # Load environment variables
 load_dotenv()
@@ -40,21 +41,55 @@ def predict():
         audio_seg = audio_seg.set_frame_rate(44100).set_channels(1)
         audio_seg = audio_seg[:5000]  # Limit to 5 seconds
 
+        # Export to bytes and encode base64
         wav_io = io.BytesIO()
         audio_seg.export(wav_io, format="wav")
         wav_io.seek(0)
+        audio_base64 = base64.b64encode(wav_io.read()).decode("utf-8")
 
-        client = HumeClient(api_key=HUME_API_KEY)
+        # Build request payload
+        payload = {
+            "models": ["prosody"],
+            "data": [
+                {
+                    "name": "recording.wav",
+                    "type": "audio/wav",
+                    "data": audio_base64
+                }
+            ]
+        }
 
-        # Submit job to batch API
-        job = client.empathic_voice.batch.submit_job(data=[wav_io.getvalue()])
-        job_result = job.await_complete()
+        headers = {
+            "X-Hume-Api-Key": HUME_API_KEY,
+            "Content-Type": "application/json"
+        }
 
-        # Parse emotions
+        # Send request to Hume Batch API
+        response = requests.post(
+            "https://api.hume.ai/v0/batch/submit",
+            headers=headers,
+            json=payload,
+            timeout=30
+        )
+
+        print(f"Hume API Status: {response.status_code}")
+        print(f"Hume API Response: {response.text[:500]}...")
+
+        if response.status_code != 200:
+            return jsonify({"error": f"Hume API request failed: {response.text}"}), 500
+
+        data = response.json()
+
+        # Extract emotions
         emotions = {}
-        raw_emotions = job_result["models"]["prosody"]["grouped_predictions"][0]["predictions"][0]["emotions"]
-        for emo in raw_emotions:
-            emotions[emo["name"]] = emo["score"]
+        try:
+            raw_emotions = data["predictions"][0]["models"]["prosody"]["grouped_predictions"][0]["predictions"][0]["emotions"]
+            for emo in raw_emotions:
+                emotions[emo["name"]] = emo["score"]
+        except Exception as e:
+            print(f"❌ Parsing error: {e}")
+            traceback.print_exc()
+            return jsonify({"error": "Failed to parse emotions."}), 500
 
         if not emotions:
             return jsonify({"error": "No emotions found"}), 500
@@ -79,7 +114,7 @@ def predict():
         })
 
     except Exception as e:
-        print("\u274c Prediction error:")
+        print("❌ Prediction error:")
         traceback.print_exc()
         return jsonify({"error": "Something went wrong processing your file."}), 500
 
@@ -104,10 +139,9 @@ def chat():
         return jsonify({"reply": assistant_msg})
 
     except Exception as e:
-        print("\u274c Chat error:")
+        print("❌ Chat error:")
         traceback.print_exc()
         return jsonify({"error": "Something went wrong during chat."}), 500
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
-
