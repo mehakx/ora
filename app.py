@@ -1,13 +1,11 @@
 import os
 import uuid
 import traceback
-import io
-import base64
 import requests
 from flask import Flask, request, jsonify, render_template, session
 from flask_cors import CORS
-from pydub import AudioSegment
 from dotenv import load_dotenv
+import time
 
 # Load environment variables
 load_dotenv()
@@ -31,91 +29,74 @@ def index():
 @app.route("/predict", methods=["POST"])
 def predict():
     try:
-        if "file" not in request.files:
-            return jsonify({"error": "No file uploaded"}), 400
+        data = request.get_json()
+        audio_url = data.get("audio_url")
 
-        blob = request.files["file"].read()
-        # 🛑 Log received file size
-        print("✅ Received file size (bytes):", len(blob))
+        if not audio_url:
+            return jsonify({"error": "Missing audio URL"}), 400
 
-        # Process audio
-        audio_seg = AudioSegment.from_file(io.BytesIO(blob))
-        audio_seg = audio_seg.set_frame_rate(44100).set_channels(1)
-        audio_seg = audio_seg[:5000]  # Limit audio to 5 seconds
-
-        # Export audio to bytes
-        wav_io = io.BytesIO()
-        audio_seg.export(wav_io, format="wav")
-        wav_io.seek(0)
-        audio_base64 = base64.b64encode(wav_io.read()).decode("utf-8")
-
-        # Build the JSON request for Hume Batch API
+        # Create Batch Job
         payload = {
-            "models": {
-                "prosody": {}
-            },
-            "data": [
-                {
-                    "name": "recording.wav",
-                    "type": "audio/wav",
-                    "data": audio_base64
-                }
-            ]
+            "urls": [audio_url],
+            "models": {"prosody": {}}
         }
-
-        # 🛑 Log payload structure
-        print("✅ Payload keys:", list(payload.keys()))
-        print("✅ Sending request to Hume...")
 
         headers = {
             "X-Hume-Api-Key": HUME_API_KEY,
             "Content-Type": "application/json"
         }
 
+        print("✅ Creating Batch Job...")
         response = requests.post(
-            "https://api.hume.ai/v0/batch/submit",
+            "https://api.hume.ai/v0/batch/jobs",
             headers=headers,
             json=payload
         )
 
-        # 🛑 Log Hume API response
-        print("✅ Hume API Response Code:", response.status_code)
-        print("✅ Hume API Response Body:", response.text)
-
         if response.status_code != 200:
-            print(f"❌ Hume API Error: {response.text}")
-            return jsonify({"error": "Hume API request failed"}), 500
+            print(f"❌ Failed to create job: {response.text}")
+            return jsonify({"error": "Hume API job creation failed"}), 500
 
-        data = response.json()
+        job_data = response.json()
+        job_id = job_data.get("job_id")
 
-        # Extract emotions from response
-        emotions = {}
-        try:
-            raw_emotions = data["predictions"][0]["models"]["prosody"]["grouped_predictions"][0]["predictions"][0]["emotions"]
-            for emo in raw_emotions:
-                emotions[emo["name"]] = emo["score"]
-        except Exception as e:
-            print(f"❌ Parsing error: {e}")
-            traceback.print_exc()
-            return jsonify({"error": "Failed to parse emotions."}), 500
+        if not job_id:
+            return jsonify({"error": "No job_id returned from Hume"}), 500
 
-        if not emotions:
-            return jsonify({"error": "No emotions found"}), 500
+        # Poll for job completion
+        print(f"⏳ Polling for job {job_id}...")
+        status = "running"
+        while status != "done":
+            time.sleep(3)
+            status_response = requests.get(
+                f"https://api.hume.ai/v0/batch/jobs/{job_id}",
+                headers=headers
+            )
+            status_data = status_response.json()
+            status = status_data.get("status")
+            print(f"Polling... Current status: {status}")
 
-        top_emotion = max(emotions, key=lambda k: emotions[k])
-        emotion_probs = {emo: round(prob * 100, 1) for emo, prob in emotions.items()}
+        # When done, get predictions
+        predictions = status_data.get("predictions", [])
 
-        reply = f"I'm here for you. It sounds like you're feeling {top_emotion}."
+        if not predictions:
+            return jsonify({"error": "No predictions found"}), 500
+
+        emotions = predictions[0]["models"]["prosody"]["grouped_predictions"][0]["predictions"][0]["emotions"]
+        top_emotion = max(emotions, key=lambda emo: emo["score"])
+        emotion_probs = {emo["name"]: round(emo["score"] * 100, 1) for emo in emotions}
+
+        reply = f"I'm here for you. It sounds like you're feeling {top_emotion['name']}."
 
         chat_id = uuid.uuid4().hex
         conversations[chat_id] = [
             {"role": "system",    "content": "You are a compassionate assistant."},
-            {"role": "user",      "content": f"I am feeling {top_emotion}."},
+            {"role": "user",      "content": f"I am feeling {top_emotion['name']}."},
             {"role": "assistant", "content": reply}
         ]
 
         return jsonify({
-            "emotion": top_emotion,
+            "emotion": top_emotion["name"],
             "probabilities": emotion_probs,
             "reply": reply,
             "chat_id": chat_id
@@ -150,4 +131,3 @@ def chat():
         print("❌ Chat error:")
         traceback.print_exc()
         return jsonify({"error": "Something went wrong during chat."}), 500
-
