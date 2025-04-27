@@ -34,9 +34,11 @@ def index():
 @app.route("/uploadcare-proxy", methods=["POST"])
 def uploadcare_proxy():
     try:
+        print(f"DEBUG: Uploadcare Public Key being used → {UPLOADCARE_PUB_KEY}")
+
         if 'file' not in request.files:
             return jsonify({"error": "No file part in the request"}), 400
-        
+
         file = request.files['file']
         file_content = file.read()
         file_size = len(file_content)
@@ -92,7 +94,7 @@ def uploadcare_proxy():
         return jsonify({"file": uuid_value}), 200
 
     except Exception as e:
-        print("\u274c Uploadcare Proxy Error:", e)
+        print("❌ Uploadcare Proxy Error:", e)
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
