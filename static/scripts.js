@@ -6,37 +6,35 @@ window.addEventListener("DOMContentLoaded", () => {
   const recordButton  = document.getElementById("recordBtn");
   const stopButton    = document.getElementById("stopBtn");
   const status        = document.getElementById("status");
-
-  // Chat UI elements
   const chatDiv       = document.getElementById("chat");
   const chatHistoryEl = document.getElementById("chatHistory");
   const userMessage   = document.getElementById("userMessage");
   const sendBtn       = document.getElementById("sendBtn");
 
-  // Check if all UI elements exist
   if (!recordButton || !stopButton || !status) {
     console.error("Error: Missing UI elements");
     document.body.innerHTML = "<h2>Error: Missing required UI elements</h2>";
     return;
   }
 
+  // 📍 Hardcode to Render backend URL
+  const BASE_URL = "https://ora-owjy.onrender.com";
+
   // 🎤 Start Recording
   recordButton.addEventListener("click", async () => {
     try {
       status.textContent = "Requesting microphone access...";
       status.className = "";
-      
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        audio: { 
+
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
           echoCancellation: true,
           noiseSuppression: true,
           sampleRate: 44100
-        } 
+        }
       });
-      
-      const mimeType = MediaRecorder.isTypeSupported('audio/webm') 
-                        ? 'audio/webm' : 'audio/wav';
-      
+
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/wav';
       mediaRecorder = new MediaRecorder(stream, { mimeType });
       audioChunks = [];
 
@@ -45,22 +43,20 @@ window.addEventListener("DOMContentLoaded", () => {
           audioChunks.push(e.data);
         }
       };
-      
+
       mediaRecorder.onstop = async () => {
         try {
           status.textContent = "Processing audio...";
-          
           stream.getTracks().forEach(track => track.stop());
-          
+
           if (audioChunks.length === 0) {
             throw new Error("No audio recorded");
           }
-          
+
           const audioBlob = new Blob(audioChunks, { type: mimeType });
-          
-          status.textContent = "Uploading to server...";
+          status.textContent = "Uploading audio...";
           await sendAudio(audioBlob);
-          
+
         } catch (err) {
           console.error("Audio processing error:", err);
           status.textContent = "⚠️ Error: " + err.message;
@@ -77,7 +73,7 @@ window.addEventListener("DOMContentLoaded", () => {
         stopButton.disabled = true;
       };
 
-      mediaRecorder.start(100); 
+      mediaRecorder.start(100);
       status.textContent = "🎙️ Recording...";
       recordButton.disabled = true;
       stopButton.disabled = false;
@@ -111,9 +107,8 @@ window.addEventListener("DOMContentLoaded", () => {
   // 🔼 Upload to Uploadcare
   async function uploadToUploadcare(blob) {
     const formData = new FormData();
-    formData.append('UPLOADCARE_STORE', '1'); 
-    formData.append('UPLOADCARE_PUB_KEY', 'fa6ab5beadb496664775'); // replace this!
-
+    formData.append('UPLOADCARE_STORE', '1');
+    formData.append('UPLOADCARE_PUB_KEY', 'YOUR_UPLOADCARE_PUBLIC_KEY'); // <-- Replace with your Uploadcare key
     formData.append('file', blob);
 
     const response = await fetch('https://upload.uploadcare.com/base/', {
@@ -121,13 +116,17 @@ window.addEventListener("DOMContentLoaded", () => {
       body: formData
     });
 
+    if (!response.ok) {
+      throw new Error(`Uploadcare upload failed: ${response.status}`);
+    }
+
     const data = await response.json();
     const fileUrl = `https://ucarecdn.com/${data.file}/`;
     console.log("✅ Uploaded to Uploadcare:", fileUrl);
     return fileUrl;
   }
 
-  // 🔄 Upload & display results in chat
+  // 🔄 Upload audio to server & analyze
   async function sendAudio(blob) {
     try {
       console.log("📤 Uploading audio to Uploadcare...");
@@ -138,13 +137,9 @@ window.addEventListener("DOMContentLoaded", () => {
       console.log("📡 Sending Uploadcare URL to server...");
       status.textContent = "Analyzing emotion...";
 
-      const BASE_URL = window.location.hostname === 'localhost' 
-                     ? '' 
-                     : 'https://ora-owjy.onrender.com';
-
       const res = await fetch(`${BASE_URL}/predict`, {
         method: "POST",
-        headers: { 
+        headers: {
           "Accept": "application/json",
           "Content-Type": "application/json"
         },
@@ -153,12 +148,11 @@ window.addEventListener("DOMContentLoaded", () => {
 
       if (!res.ok) {
         const errorText = await res.text();
-        console.error(`Server error (${res.status}):`, errorText);
-        throw new Error(`Server returned ${res.status}: ${errorText}`);
+        throw new Error(`Server error (${res.status}): ${errorText}`);
       }
 
       const data = await res.json();
-      
+
       if (!data || !data.probabilities) {
         throw new Error("Invalid response format: missing emotion data");
       }
@@ -191,14 +185,14 @@ window.addEventListener("DOMContentLoaded", () => {
 
   // 📨 Send chat messages
   sendBtn.addEventListener("click", sendMessage);
-  
+
   userMessage.addEventListener("keypress", (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       sendMessage();
     }
   });
-  
+
   async function sendMessage() {
     const text = userMessage.value.trim();
     if (!text || !chatId) return;
@@ -208,10 +202,6 @@ window.addEventListener("DOMContentLoaded", () => {
     chatHistoryEl.scrollTop = chatHistoryEl.scrollHeight;
 
     try {
-      const BASE_URL = window.location.hostname === 'localhost' 
-                     ? '' 
-                     : 'https://ora-owjy.onrender.com';
-
       const res = await fetch(`${BASE_URL}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -224,7 +214,7 @@ window.addEventListener("DOMContentLoaded", () => {
       }
 
       const data = await res.json();
-      
+
       if (data.error) throw new Error(data.error);
 
       chatHistoryEl.innerHTML += `<div class="assistant">🤖 ${data.reply || "I'm processing your message."}</div>`;
@@ -237,10 +227,7 @@ window.addEventListener("DOMContentLoaded", () => {
     }
   }
 
+  // Initialize UI
   stopButton.disabled = true;
   status.textContent = "Ready to record";
 });
-
-
-
-
