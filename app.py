@@ -22,7 +22,6 @@ CORS(app, resources={r"/*": {"origins": [
 ]}})
 
 HUME_API_KEY = os.getenv("HUME_API_KEY")
-UPLOADCARE_PUB_KEY = os.getenv("UPLOADCARE_PUB_KEY")
 
 # In-memory conversation storage
 conversations = {}
@@ -41,6 +40,11 @@ def uploadcare_proxy():
         file_content = file.read()
         file_size = len(file_content)
 
+        # 🛠️ Fetch Uploadcare key fresh inside the function
+        pub_key = os.getenv("UPLOADCARE_PUB_KEY")
+        if not pub_key:
+            return jsonify({"error": "UPLOADCARE_PUB_KEY not set."}), 500
+
         # Step 1: Initialize multipart upload
         init_response = requests.post(
             'https://upload.uploadcare.com/multipart/start/',
@@ -48,7 +52,7 @@ def uploadcare_proxy():
                 "filename": file.filename,
                 "size": file_size,
                 "content_type": file.content_type,
-                "pub_key": UPLOADCARE_PUB_KEY  # ✅ Correct pub_key
+                "pub_key": pub_key
             }
         )
         print(f"Multipart init response: {init_response.text}")
@@ -79,7 +83,7 @@ def uploadcare_proxy():
             'https://upload.uploadcare.com/multipart/complete/',
             json={
                 "uuid": uuid_value,
-                "pub_key": UPLOADCARE_PUB_KEY  # ✅ Correct pub_key here too
+                "pub_key": pub_key
             }
         )
         print(f"Complete upload response: {complete_response.text}")
