@@ -24,6 +24,10 @@ CORS(app, resources={r"/*": {"origins": [
 HUME_API_KEY = os.getenv("HUME_API_KEY")
 UPLOADCARE_PUB_KEY = os.getenv("UPLOADCARE_PUB_KEY")
 
+# DEBUG: Print keys to confirm they are loaded
+print(f"🔑 Loaded Uploadcare key: {UPLOADCARE_PUB_KEY}")
+print(f"🔑 Loaded Hume key: {HUME_API_KEY}")
+
 # In-memory conversation storage
 conversations = {}
 
@@ -34,14 +38,18 @@ def index():
 @app.route("/uploadcare-proxy", methods=["POST"])
 def uploadcare_proxy():
     try:
-        print(f"✅ Loaded Uploadcare key: {UPLOADCARE_PUB_KEY}")  # <-- DEBUG PRINT
-
+        if not UPLOADCARE_PUB_KEY:
+            print("❌ ERROR: UPLOADCARE_PUB_KEY is not loaded properly!")
+            return jsonify({"error": "Server misconfiguration: Uploadcare public key missing."}), 500
+        
         if 'file' not in request.files:
             return jsonify({"error": "No file part in the request"}), 400
-
+        
         file = request.files['file']
         file_content = file.read()
         file_size = len(file_content)
+
+        print(f"📦 Received file: {file.filename} | Size: {file_size}")
 
         # Step 1: Initialize multipart upload
         init_response = requests.post(
@@ -53,7 +61,7 @@ def uploadcare_proxy():
                 "pub_key": UPLOADCARE_PUB_KEY
             }
         )
-        print(f"Multipart init response: {init_response.text}")
+        print(f"Multipart init response: {init_response.status_code} {init_response.text}")
 
         if init_response.status_code != 200:
             return jsonify({"error": f"Failed to initialize upload: {init_response.text}"}), 500
@@ -84,7 +92,7 @@ def uploadcare_proxy():
                 "pub_key": UPLOADCARE_PUB_KEY
             }
         )
-        print(f"Complete upload response: {complete_response.text}")
+        print(f"Complete upload response: {complete_response.status_code} {complete_response.text}")
 
         if complete_response.status_code != 200:
             return jsonify({"error": f"Failed to complete upload: {complete_response.text}"}), 500
@@ -96,4 +104,7 @@ def uploadcare_proxy():
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
-# (The /predict and /chat routes remain unchanged)
+# Predict and Chat routes (unchanged, you already had these)
+
+if __name__ == "__main__":
+    app.run(debug=True)
