@@ -1,11 +1,9 @@
-# app.py (clean, fixed)
-
 import os
 import uuid
 import time
 import traceback
 import requests
-from flask import Flask, request, jsonify, render_template, session
+from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS
 from dotenv import load_dotenv
 
@@ -15,6 +13,7 @@ load_dotenv()
 app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET", "supersecret")
 
+# Allow CORS from local + Netlify + Render
 CORS(app, resources={r"/*": {"origins": [
     "http://localhost:5173",
     "http://localhost:5500",
@@ -25,6 +24,7 @@ CORS(app, resources={r"/*": {"origins": [
 HUME_API_KEY = os.getenv("HUME_API_KEY")
 UPLOADCARE_PUB_KEY = os.getenv("UPLOADCARE_PUB_KEY")
 
+# In-memory conversation storage
 conversations = {}
 
 @app.route("/")
@@ -36,7 +36,7 @@ def uploadcare_proxy():
     try:
         if 'file' not in request.files:
             return jsonify({"error": "No file part in the request"}), 400
-
+        
         file = request.files['file']
         file_content = file.read()
         file_size = len(file_content)
@@ -48,7 +48,7 @@ def uploadcare_proxy():
                 "filename": file.filename,
                 "size": file_size,
                 "content_type": file.content_type,
-                "pub_key": UPLOADCARE_PUB_KEY
+                "pub_key": UPLOADCARE_PUB_KEY  # ✅ Correct pub_key
             }
         )
         print(f"Multipart init response: {init_response.text}")
@@ -77,7 +77,10 @@ def uploadcare_proxy():
         # Step 3: Complete multipart upload
         complete_response = requests.post(
             'https://upload.uploadcare.com/multipart/complete/',
-            json={"uuid": uuid_value, "pub_key": UPLOADCARE_PUB_KEY}
+            json={
+                "uuid": uuid_value,
+                "pub_key": UPLOADCARE_PUB_KEY  # ✅ Correct pub_key here too
+            }
         )
         print(f"Complete upload response: {complete_response.text}")
 
@@ -87,7 +90,7 @@ def uploadcare_proxy():
         return jsonify({"file": uuid_value}), 200
 
     except Exception as e:
-        print(f"❌ Uploadcare Proxy Error:", e)
+        print("❌ Uploadcare Proxy Error:", e)
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
@@ -95,29 +98,47 @@ def uploadcare_proxy():
 def predict():
     try:
         data = request.get_json()
+        print("✅ Received data:", data)
+
         if not data or "audio_url" not in data:
             return jsonify({"error": "No audio URL received"}), 400
 
         audio_url = data["audio_url"]
+        print("✅ Received audio URL:", audio_url)
 
-        payload = {"urls": [audio_url], "models": {"prosody": {}}}
-        headers = {"X-Hume-Api-Key": HUME_API_KEY, "Content-Type": "application/json"}
+        # Step 2: Create a Hume Batch job
+        payload = {
+            "urls": [audio_url],
+            "models": {"prosody": {}}
+        }
+        headers = {
+            "X-Hume-Api-Key": HUME_API_KEY,
+            "Content-Type": "application/json"
+        }
 
+        print("✅ Submitting batch job...")
         response = requests.post("https://api.hume.ai/v0/batch/jobs", headers=headers, json=payload)
+
         if response.status_code != 200:
+            print(f"❌ Failed to create Hume job: {response.text}")
             return jsonify({"error": "Failed to create Hume job"}), 500
 
         job_data = response.json()
         job_id = job_data.get("job_id")
 
         if not job_id:
-            return jsonify({"error": "No job_id returned"}), 500
+            return jsonify({"error": "No job_id returned from Hume API"}), 500
+
+        print(f"⏳ Polling Hume job ID {job_id}...")
 
         while True:
             time.sleep(3)
             status_response = requests.get(f"https://api.hume.ai/v0/batch/jobs/{job_id}", headers=headers)
             status_data = status_response.json()
-            if status_data.get("status") == "done":
+            job_status = status_data.get("status")
+
+            print(f"🔄 Job status: {job_status}")
+            if job_status == "done":
                 break
 
         predictions = status_data.get("predictions", [])
@@ -132,8 +153,8 @@ def predict():
 
         chat_id = uuid.uuid4().hex
         conversations[chat_id] = [
-            {"role": "system", "content": "You are a compassionate assistant."},
-            {"role": "user", "content": f"I am feeling {top_emotion['name']}."},
+            {"role": "system",    "content": "You are a compassionate assistant."},
+            {"role": "user",      "content": f"I am feeling {top_emotion['name']}."},
             {"role": "assistant", "content": reply}
         ]
 
@@ -147,7 +168,7 @@ def predict():
     except Exception as e:
         print("❌ Prediction error:", e)
         traceback.print_exc()
-        return jsonify({"error": "Something went wrong."}), 500
+        return jsonify({"error": "Something went wrong processing your file."}), 500
 
 @app.route("/chat", methods=["POST"])
 def chat():
@@ -158,6 +179,8 @@ def chat():
 
         if not chat_id or chat_id not in conversations:
             return jsonify({"error": "Invalid or missing chat_id"}), 400
+        if not user_msg:
+            return jsonify({"error": "Empty message"}), 400
 
         conversations[chat_id].append({"role": "user", "content": user_msg})
 
