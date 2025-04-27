@@ -1,25 +1,29 @@
 import os
 import uuid
+import time
 import traceback
 import requests
 from flask import Flask, request, jsonify, render_template, session
 from flask_cors import CORS
 from dotenv import load_dotenv
-import time
 
 # Load environment variables
 load_dotenv()
 
 app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET", "supersecret")
+
+# ✅ Allow CORS from both localhost and production (Netlify)
 CORS(app, resources={r"/*": {"origins": [
     "http://localhost:5173",
-    "https://your-netlify-site.netlify.app"
+    "http://localhost:5500",
+    "https://your-netlify-site.netlify.app",
+    "https://ora-owjy.onrender.com"
 ]}})
 
 HUME_API_KEY = os.getenv("HUME_API_KEY")
 
-# In-memory chat store
+# Simple in-memory conversation store
 conversations = {}
 
 @app.route("/")
@@ -30,55 +34,52 @@ def index():
 def predict():
     try:
         data = request.get_json()
-        audio_url = data.get("audio_url")
+        print("✅ Received data:", data)
 
-        if not audio_url:
-            return jsonify({"error": "Missing audio URL"}), 400
+        if not data or "audio_url" not in data:
+            return jsonify({"error": "No audio URL received"}), 400
 
-        # Create Batch Job
+        audio_url = data["audio_url"]
+        print("✅ Received audio URL:", audio_url)
+
+        # Step 2: Create a Hume Batch job
         payload = {
             "urls": [audio_url],
             "models": {"prosody": {}}
         }
-
         headers = {
             "X-Hume-Api-Key": HUME_API_KEY,
             "Content-Type": "application/json"
         }
 
-        print("✅ Creating Batch Job...")
-        response = requests.post(
-            "https://api.hume.ai/v0/batch/jobs",
-            headers=headers,
-            json=payload
-        )
+        print("✅ Submitting batch job...")
+        response = requests.post("https://api.hume.ai/v0/batch/jobs", headers=headers, json=payload)
 
         if response.status_code != 200:
-            print(f"❌ Failed to create job: {response.text}")
-            return jsonify({"error": "Hume API job creation failed"}), 500
+            print(f"❌ Failed to create Hume job: {response.text}")
+            return jsonify({"error": "Failed to create Hume job"}), 500
 
         job_data = response.json()
         job_id = job_data.get("job_id")
 
         if not job_id:
-            return jsonify({"error": "No job_id returned from Hume"}), 500
+            return jsonify({"error": "No job_id returned from Hume API"}), 500
 
-        # Poll for job completion
-        print(f"⏳ Polling for job {job_id}...")
-        status = "running"
-        while status != "done":
+        print(f"⏳ Polling Hume job ID {job_id}...")
+
+        # Step 3: Poll until job is done
+        while True:
             time.sleep(3)
-            status_response = requests.get(
-                f"https://api.hume.ai/v0/batch/jobs/{job_id}",
-                headers=headers
-            )
+            status_response = requests.get(f"https://api.hume.ai/v0/batch/jobs/{job_id}", headers=headers)
             status_data = status_response.json()
-            status = status_data.get("status")
-            print(f"Polling... Current status: {status}")
+            job_status = status_data.get("status")
 
-        # When done, get predictions
+            print(f"🔄 Job status: {job_status}")
+            if job_status == "done":
+                break
+
+        # Step 4: Process emotion predictions
         predictions = status_data.get("predictions", [])
-
         if not predictions:
             return jsonify({"error": "No predictions found"}), 500
 
@@ -103,7 +104,7 @@ def predict():
         })
 
     except Exception as e:
-        print("❌ Prediction error:")
+        print("❌ Prediction error:", e)
         traceback.print_exc()
         return jsonify({"error": "Something went wrong processing your file."}), 500
 
@@ -121,13 +122,16 @@ def chat():
 
         conversations[chat_id].append({"role": "user", "content": user_msg})
 
-        assistant_msg = f"I hear you. Thanks for sharing."
-
+        assistant_msg = "I hear you. Thanks for sharing."
         conversations[chat_id].append({"role": "assistant", "content": assistant_msg})
 
         return jsonify({"reply": assistant_msg})
 
     except Exception as e:
-        print("❌ Chat error:")
+        print("❌ Chat error:", e)
         traceback.print_exc()
         return jsonify({"error": "Something went wrong during chat."}), 500
+
+if __name__ == "__main__":
+    app.run(debug=True)
+
