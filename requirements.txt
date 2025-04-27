@@ -4,4 +4,5 @@ requests
 python-dotenv
 pydub
 gunicorn
+hume
 
