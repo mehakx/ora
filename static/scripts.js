@@ -1,3 +1,5 @@
+// ✅ FINAL updated scripts.js file (for proxy)
+
 window.addEventListener("DOMContentLoaded", () => {
   let audioChunks = [];
   let mediaRecorder;
@@ -19,6 +21,7 @@ window.addEventListener("DOMContentLoaded", () => {
 
   const BASE_URL = "https://ora-owjy.onrender.com";
 
+  // 🎤 Start recording
   recordButton.addEventListener("click", async () => {
     try {
       status.textContent = "Requesting microphone access...";
@@ -28,11 +31,11 @@ window.addEventListener("DOMContentLoaded", () => {
         audio: { echoCancellation: true, noiseSuppression: true, sampleRate: 44100 }
       });
 
-      const mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/wav';
+      const mimeType = MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "audio/wav";
       mediaRecorder = new MediaRecorder(stream, { mimeType });
       audioChunks = [];
 
-      mediaRecorder.ondataavailable = e => {
+      mediaRecorder.ondataavailable = (e) => {
         if (e.data.size > 0) {
           audioChunks.push(e.data);
         }
@@ -41,7 +44,7 @@ window.addEventListener("DOMContentLoaded", () => {
       mediaRecorder.onstop = async () => {
         try {
           status.textContent = "Processing audio...";
-          stream.getTracks().forEach(track => track.stop());
+          stream.getTracks().forEach((track) => track.stop());
 
           if (audioChunks.length === 0) {
             throw new Error("No audio recorded");
@@ -57,14 +60,6 @@ window.addEventListener("DOMContentLoaded", () => {
           status.className = "error";
           recordButton.disabled = false;
         }
-      };
-
-      mediaRecorder.onerror = (event) => {
-        console.error("MediaRecorder error:", event.error);
-        status.textContent = "⚠️ Recording error: " + event.error;
-        status.className = "error";
-        recordButton.disabled = false;
-        stopButton.disabled = true;
       };
 
       mediaRecorder.start(100);
@@ -97,13 +92,13 @@ window.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  // 🔄 Upload audio to your proxy server
+  // 🔼 Upload audio via proxy
   async function uploadToProxy(blob) {
     const formData = new FormData();
-    formData.append('file', blob);
+    formData.append("file", blob);
 
     const response = await fetch(`${BASE_URL}/uploadcare-proxy`, {
-      method: 'POST',
+      method: "POST",
       body: formData
     });
 
@@ -112,19 +107,11 @@ window.addEventListener("DOMContentLoaded", () => {
     }
 
     const data = await response.json();
-
-    // ✨ Safe-check: extract the file UUID safely
-    const fileId = data.file || (data.result && data.result.file);
-
-    if (!fileId) {
-      throw new Error("Invalid proxy response: missing file ID");
-    }
-
-    const fileUrl = `https://ucarecdn.com/${fileId}/`;
-    console.log("✅ Uploaded through proxy:", fileUrl);
-    return fileUrl;
+    console.log("✅ Proxy uploaded, UUID:", data.file);
+    return `https://ucarecdn.com/${data.file}/`;
   }
 
+  // 🔄 Send audio for emotion prediction
   async function sendAudio(blob) {
     try {
       console.log("📤 Uploading audio to proxy...");
@@ -181,8 +168,8 @@ window.addEventListener("DOMContentLoaded", () => {
     }
   }
 
+  // 📨 Send chat messages
   sendBtn.addEventListener("click", sendMessage);
-
   userMessage.addEventListener("keypress", (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -205,15 +192,7 @@ window.addEventListener("DOMContentLoaded", () => {
         body: JSON.stringify({ chat_id: chatId, message: text })
       });
 
-      if (!res.ok) {
-        const errorText = await res.text();
-        throw new Error(`Server error (${res.status}): ${errorText}`);
-      }
-
       const data = await res.json();
-
-      if (data.error) throw new Error(data.error);
-
       chatHistoryEl.innerHTML += `<div class="assistant">🤖 ${data.reply || "I'm processing your message."}</div>`;
       chatHistoryEl.scrollTop = chatHistoryEl.scrollHeight;
 
