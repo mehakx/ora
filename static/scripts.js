@@ -1,4 +1,4 @@
-// ✅ FINAL updated scripts.js file (for proxy)
+// Updated scripts.js to match new server flow
 
 window.addEventListener("DOMContentLoaded", () => {
   let audioChunks = [];
@@ -13,15 +13,14 @@ window.addEventListener("DOMContentLoaded", () => {
   const userMessage = document.getElementById("userMessage");
   const sendBtn = document.getElementById("sendBtn");
 
+  const BASE_URL = "https://ora-owjy.onrender.com";
+
   if (!recordButton || !stopButton || !status) {
     console.error("Error: Missing UI elements");
     document.body.innerHTML = "<h2>Error: Missing required UI elements</h2>";
     return;
   }
 
-  const BASE_URL = "https://ora-owjy.onrender.com";
-
-  // 🎤 Start recording
   recordButton.addEventListener("click", async () => {
     try {
       status.textContent = "Requesting microphone access...";
@@ -31,11 +30,11 @@ window.addEventListener("DOMContentLoaded", () => {
         audio: { echoCancellation: true, noiseSuppression: true, sampleRate: 44100 }
       });
 
-      const mimeType = MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "audio/wav";
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/wav';
       mediaRecorder = new MediaRecorder(stream, { mimeType });
       audioChunks = [];
 
-      mediaRecorder.ondataavailable = (e) => {
+      mediaRecorder.ondataavailable = e => {
         if (e.data.size > 0) {
           audioChunks.push(e.data);
         }
@@ -44,7 +43,7 @@ window.addEventListener("DOMContentLoaded", () => {
       mediaRecorder.onstop = async () => {
         try {
           status.textContent = "Processing audio...";
-          stream.getTracks().forEach((track) => track.stop());
+          stream.getTracks().forEach(track => track.stop());
 
           if (audioChunks.length === 0) {
             throw new Error("No audio recorded");
@@ -92,42 +91,32 @@ window.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  // 🔼 Upload audio via proxy
-  async function uploadToProxy(blob) {
-    const formData = new FormData();
-    formData.append("file", blob);
-
-    const response = await fetch(`${BASE_URL}/uploadcare-proxy`, {
-      method: "POST",
-      body: formData
-    });
-
-    if (!response.ok) {
-      throw new Error(`Proxy upload failed: ${response.status}`);
-    }
-
-    const data = await response.json();
-    console.log("✅ Proxy uploaded, UUID:", data.file);
-    return `https://ucarecdn.com/${data.file}/`;
-  }
-
-  // 🔄 Send audio for emotion prediction
   async function sendAudio(blob) {
     try {
       console.log("📤 Uploading audio to proxy...");
-      status.textContent = "Uploading audio...";
 
-      const uploadcareUrl = await uploadToProxy(blob);
+      const formData = new FormData();
+      formData.append('file', blob);
 
-      console.log("📡 Sending Uploadcare URL to server...");
+      const proxyRes = await fetch(`${BASE_URL}/uploadcare-proxy`, {
+        method: "POST",
+        body: formData
+      });
+
+      if (!proxyRes.ok) {
+        const errorText = await proxyRes.text();
+        throw new Error(`Proxy upload failed: ${proxyRes.status} - ${errorText}`);
+      }
+
+      const uploadData = await proxyRes.json();
+      const uploadcareUrl = `https://ucarecdn.com/${uploadData.file}/`;
+
+      console.log("📡 Sending Uploadcare URL to Hume API server...");
       status.textContent = "Analyzing emotion...";
 
       const res = await fetch(`${BASE_URL}/predict`, {
         method: "POST",
-        headers: {
-          "Accept": "application/json",
-          "Content-Type": "application/json"
-        },
+        headers: { "Accept": "application/json", "Content-Type": "application/json" },
         body: JSON.stringify({ audio_url: uploadcareUrl })
       });
 
@@ -168,8 +157,8 @@ window.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  // 📨 Send chat messages
   sendBtn.addEventListener("click", sendMessage);
+
   userMessage.addEventListener("keypress", (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -192,7 +181,15 @@ window.addEventListener("DOMContentLoaded", () => {
         body: JSON.stringify({ chat_id: chatId, message: text })
       });
 
+      if (!res.ok) {
+        const errorText = await res.text();
+        throw new Error(`Server error (${res.status}): ${errorText}`);
+      }
+
       const data = await res.json();
+
+      if (data.error) throw new Error(data.error);
+
       chatHistoryEl.innerHTML += `<div class="assistant">🤖 ${data.reply || "I'm processing your message."}</div>`;
       chatHistoryEl.scrollTop = chatHistoryEl.scrollHeight;
 
