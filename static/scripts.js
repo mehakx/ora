@@ -108,7 +108,7 @@ window.addEventListener("DOMContentLoaded", () => {
   async function uploadToUploadcare(blob) {
     const formData = new FormData();
     formData.append('UPLOADCARE_STORE', '1');
-    formData.append('UPLOADCARE_PUB_KEY', 'YOUR_UPLOADCARE_PUBLIC_KEY'); // <-- Replace with your Uploadcare key
+    formData.append('UPLOADCARE_PUB_KEY', 'fa6ab5beadb496664775'); // <-- Replace with your Uploadcare key
     formData.append('file', blob);
 
     const response = await fetch('https://upload.uploadcare.com/base/', {
