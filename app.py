@@ -35,6 +35,8 @@ def predict():
             return jsonify({"error": "No file uploaded"}), 400
 
         blob = request.files["file"].read()
+        # 🛑 Log received file size
+        print("✅ Received file size (bytes):", len(blob))
 
         # Process audio
         audio_seg = AudioSegment.from_file(io.BytesIO(blob))
@@ -61,6 +63,10 @@ def predict():
             ]
         }
 
+        # 🛑 Log payload structure
+        print("✅ Payload keys:", list(payload.keys()))
+        print("✅ Sending request to Hume...")
+
         headers = {
             "X-Hume-Api-Key": HUME_API_KEY,
             "Content-Type": "application/json"
@@ -71,6 +77,10 @@ def predict():
             headers=headers,
             json=payload
         )
+
+        # 🛑 Log Hume API response
+        print("✅ Hume API Response Code:", response.status_code)
+        print("✅ Hume API Response Body:", response.text)
 
         if response.status_code != 200:
             print(f"❌ Hume API Error: {response.text}")
@@ -140,3 +150,4 @@ def chat():
         print("❌ Chat error:")
         traceback.print_exc()
         return jsonify({"error": "Something went wrong during chat."}), 500
+
