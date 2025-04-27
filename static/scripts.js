@@ -3,13 +3,13 @@ window.addEventListener("DOMContentLoaded", () => {
   let mediaRecorder;
   let chatId = null;
 
-  const recordButton  = document.getElementById("recordBtn");
-  const stopButton    = document.getElementById("stopBtn");
-  const status        = document.getElementById("status");
-  const chatDiv       = document.getElementById("chat");
+  const recordButton = document.getElementById("recordBtn");
+  const stopButton = document.getElementById("stopBtn");
+  const status = document.getElementById("status");
+  const chatDiv = document.getElementById("chat");
   const chatHistoryEl = document.getElementById("chatHistory");
-  const userMessage   = document.getElementById("userMessage");
-  const sendBtn       = document.getElementById("sendBtn");
+  const userMessage = document.getElementById("userMessage");
+  const sendBtn = document.getElementById("sendBtn");
 
   if (!recordButton || !stopButton || !status) {
     console.error("Error: Missing UI elements");
@@ -17,10 +17,8 @@ window.addEventListener("DOMContentLoaded", () => {
     return;
   }
 
-  // 📍 Hardcoded to Render backend URL
   const BASE_URL = "https://ora-owjy.onrender.com";
 
-  // 🎤 Start Recording
   recordButton.addEventListener("click", async () => {
     try {
       status.textContent = "Requesting microphone access...";
@@ -90,7 +88,6 @@ window.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  // ⏹ Stop early
   stopButton.addEventListener("click", () => {
     if (mediaRecorder && mediaRecorder.state === "recording") {
       mediaRecorder.stop();
@@ -100,35 +97,40 @@ window.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  // 🔼 Upload to Uploadcare (fixed to multipart)
-  async function uploadToUploadcare(blob) {
+  // 🔄 Upload audio to your proxy server
+  async function uploadToProxy(blob) {
     const formData = new FormData();
-    formData.append('UPLOADCARE_STORE', '1');
-    formData.append('UPLOADCARE_PUB_KEY', 'fa6ab5beadb496664775'); // <-- your Uploadcare public key
     formData.append('file', blob);
 
-    const response = await fetch('https://upload.uploadcare.com/multipart/', {
+    const response = await fetch(`${BASE_URL}/uploadcare-proxy`, {
       method: 'POST',
       body: formData
     });
 
     if (!response.ok) {
-      throw new Error(`Uploadcare upload failed: ${response.status}`);
+      throw new Error(`Proxy upload failed: ${response.status}`);
     }
 
     const data = await response.json();
-    const fileUrl = `https://ucarecdn.com/${data.file}/`;
-    console.log("✅ Uploaded to Uploadcare (multipart):", fileUrl);
+
+    // ✨ Safe-check: extract the file UUID safely
+    const fileId = data.file || (data.result && data.result.file);
+
+    if (!fileId) {
+      throw new Error("Invalid proxy response: missing file ID");
+    }
+
+    const fileUrl = `https://ucarecdn.com/${fileId}/`;
+    console.log("✅ Uploaded through proxy:", fileUrl);
     return fileUrl;
   }
 
-  // 🔄 Upload audio to server & analyze
   async function sendAudio(blob) {
     try {
-      console.log("📤 Uploading audio to Uploadcare...");
+      console.log("📤 Uploading audio to proxy...");
       status.textContent = "Uploading audio...";
 
-      const uploadcareUrl = await uploadToUploadcare(blob);
+      const uploadcareUrl = await uploadToProxy(blob);
 
       console.log("📡 Sending Uploadcare URL to server...");
       status.textContent = "Analyzing emotion...";
@@ -179,7 +181,6 @@ window.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  // 📨 Send chat messages
   sendBtn.addEventListener("click", sendMessage);
 
   userMessage.addEventListener("keypress", (e) => {
@@ -223,7 +224,6 @@ window.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  // Initialize UI
   stopButton.disabled = true;
   status.textContent = "Ready to record";
 });
