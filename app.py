@@ -49,23 +49,25 @@ def uploadcare_proxy():
         file_content = file.read()
         file_size = len(file_content)
         
-        # Use pub_key as a query parameter instead of in the JSON body
-        init_url = f"https://upload.uploadcare.com/multipart/start/?pub_key={UPLOADCARE_PUB_KEY}"
+        # Set headers with the API key
+        headers = {
+            "Content-Type": "application/json",
+            "UPLOADCARE-PUB-KEY": UPLOADCARE_PUB_KEY
+        }
         
         init_payload = {
             "filename": file.filename,
             "size": file_size,
             "content_type": file.content_type
-            # No pub_key here, it's in the URL
         }
         
-        print(f"DEBUG: Init URL: {init_url}")
+        print(f"DEBUG: Init headers: {headers}")
         print(f"DEBUG: Init payload: {init_payload}")
         
         init_response = requests.post(
-            init_url,
+            "https://upload.uploadcare.com/multipart/start/",
             json=init_payload,
-            headers={"Content-Type": "application/json"}
+            headers=headers
         )
         
         print(f"Multipart init response: Status={init_response.status_code}, Body={init_response.text}")
@@ -80,7 +82,7 @@ def uploadcare_proxy():
         if not upload_url or not uuid_value:
             return jsonify({"error": "Missing upload URL or UUID from Uploadcare"}), 500
         
-        # Upload file part
+        # Upload file part (no need for the public key here)
         upload_response = requests.put(
             upload_url,
             data=file_content,
@@ -92,21 +94,23 @@ def uploadcare_proxy():
         if upload_response.status_code != 200:
             return jsonify({"error": f"Failed to upload file part: {upload_response.text}"}), 500
         
-        # Complete also needs the key as a query parameter
-        complete_url = f"https://upload.uploadcare.com/multipart/complete/?pub_key={UPLOADCARE_PUB_KEY}"
+        # Complete with the same header pattern
+        complete_headers = {
+            "Content-Type": "application/json",
+            "UPLOADCARE-PUB-KEY": UPLOADCARE_PUB_KEY
+        }
         
         complete_payload = {
             "uuid": uuid_value
-            # No pub_key here, it's in the URL
         }
         
-        print(f"DEBUG: Complete URL: {complete_url}")
+        print(f"DEBUG: Complete headers: {complete_headers}")
         print(f"DEBUG: Complete payload: {complete_payload}")
         
         complete_response = requests.post(
-            complete_url,
+            "https://upload.uploadcare.com/multipart/complete/",
             json=complete_payload,
-            headers={"Content-Type": "application/json"}
+            headers=complete_headers
         )
         
         print(f"Complete upload response: Status={complete_response.status_code}, Body={complete_response.text}")
