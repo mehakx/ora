@@ -39,17 +39,19 @@ def predict():
         # Process audio
         audio_seg = AudioSegment.from_file(io.BytesIO(blob))
         audio_seg = audio_seg.set_frame_rate(44100).set_channels(1)
-        audio_seg = audio_seg[:5000]  # Limit to 5 seconds
+        audio_seg = audio_seg[:5000]  # Limit audio to 5 seconds
 
-        # Export to bytes and encode base64
+        # Export audio to bytes
         wav_io = io.BytesIO()
         audio_seg.export(wav_io, format="wav")
         wav_io.seek(0)
         audio_base64 = base64.b64encode(wav_io.read()).decode("utf-8")
 
-        # Build request payload
+        # Build the JSON request for Hume Batch API
         payload = {
-            "models": ["prosody"],
+            "models": {
+                "prosody": {}
+            },
             "data": [
                 {
                     "name": "recording.wav",
@@ -64,23 +66,19 @@ def predict():
             "Content-Type": "application/json"
         }
 
-        # Send request to Hume Batch API
         response = requests.post(
             "https://api.hume.ai/v0/batch/submit",
             headers=headers,
-            json=payload,
-            timeout=30
+            json=payload
         )
 
-        print(f"Hume API Status: {response.status_code}")
-        print(f"Hume API Response: {response.text[:500]}...")
-
         if response.status_code != 200:
-            return jsonify({"error": f"Hume API request failed: {response.text}"}), 500
+            print(f"❌ Hume API Error: {response.text}")
+            return jsonify({"error": "Hume API request failed"}), 500
 
         data = response.json()
 
-        # Extract emotions
+        # Extract emotions from response
         emotions = {}
         try:
             raw_emotions = data["predictions"][0]["models"]["prosody"]["grouped_predictions"][0]["predictions"][0]["emotions"]
@@ -101,8 +99,8 @@ def predict():
 
         chat_id = uuid.uuid4().hex
         conversations[chat_id] = [
-            {"role": "system", "content": "You are a compassionate assistant."},
-            {"role": "user", "content": f"I am feeling {top_emotion}."},
+            {"role": "system",    "content": "You are a compassionate assistant."},
+            {"role": "user",      "content": f"I am feeling {top_emotion}."},
             {"role": "assistant", "content": reply}
         ]
 
@@ -142,6 +140,3 @@ def chat():
         print("❌ Chat error:")
         traceback.print_exc()
         return jsonify({"error": "Something went wrong during chat."}), 500
-
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True)
