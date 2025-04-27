@@ -17,7 +17,7 @@ window.addEventListener("DOMContentLoaded", () => {
     return;
   }
 
-  // 📍 Hardcode to Render backend URL
+  // 📍 Hardcoded to Render backend URL
   const BASE_URL = "https://ora-owjy.onrender.com";
 
   // 🎤 Start Recording
@@ -27,11 +27,7 @@ window.addEventListener("DOMContentLoaded", () => {
       status.className = "";
 
       const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          sampleRate: 44100
-        }
+        audio: { echoCancellation: true, noiseSuppression: true, sampleRate: 44100 }
       });
 
       const mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/wav';
@@ -104,14 +100,14 @@ window.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  // 🔼 Upload to Uploadcare
+  // 🔼 Upload to Uploadcare (fixed to multipart)
   async function uploadToUploadcare(blob) {
     const formData = new FormData();
     formData.append('UPLOADCARE_STORE', '1');
-    formData.append('UPLOADCARE_PUB_KEY', 'fa6ab5beadb496664775'); // <-- Replace with your Uploadcare key
+    formData.append('UPLOADCARE_PUB_KEY', 'fa6ab5beadb496664775'); // <-- your Uploadcare public key
     formData.append('file', blob);
 
-    const response = await fetch('https://upload.uploadcare.com/base/', {
+    const response = await fetch('https://upload.uploadcare.com/multipart/', {
       method: 'POST',
       body: formData
     });
@@ -122,7 +118,7 @@ window.addEventListener("DOMContentLoaded", () => {
 
     const data = await response.json();
     const fileUrl = `https://ucarecdn.com/${data.file}/`;
-    console.log("✅ Uploaded to Uploadcare:", fileUrl);
+    console.log("✅ Uploaded to Uploadcare (multipart):", fileUrl);
     return fileUrl;
   }
 
