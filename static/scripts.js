@@ -1,4 +1,4 @@
-// Updated scripts.js to match new server flow
+// static/scripts.js
 
 window.addEventListener("DOMContentLoaded", () => {
   let audioChunks = [];
@@ -13,19 +13,17 @@ window.addEventListener("DOMContentLoaded", () => {
   const userMessage = document.getElementById("userMessage");
   const sendBtn = document.getElementById("sendBtn");
 
-  const BASE_URL = "https://ora-owjy.onrender.com";
-
   if (!recordButton || !stopButton || !status) {
     console.error("Error: Missing UI elements");
     document.body.innerHTML = "<h2>Error: Missing required UI elements</h2>";
     return;
   }
 
+  const BASE_URL = "https://ora-owjy.onrender.com";
+
   recordButton.addEventListener("click", async () => {
     try {
       status.textContent = "Requesting microphone access...";
-      status.className = "";
-
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: { echoCancellation: true, noiseSuppression: true, sampleRate: 44100 }
       });
@@ -62,7 +60,7 @@ window.addEventListener("DOMContentLoaded", () => {
       };
 
       mediaRecorder.start(100);
-      status.textContent = "🎙️ Recording...";
+      status.textContent = "🎤 Recording...";
       recordButton.disabled = true;
       stopButton.disabled = false;
 
@@ -91,32 +89,42 @@ window.addEventListener("DOMContentLoaded", () => {
     }
   });
 
+  async function uploadToProxy(blob) {
+    const formData = new FormData();
+    formData.append('file', blob);
+
+    const response = await fetch(`${BASE_URL}/uploadcare-proxy`, {
+      method: 'POST',
+      body: formData
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Proxy upload failed: ${response.status} - ${errorText}`);
+    }
+
+    const data = await response.json();
+    const fileUrl = `https://ucarecdn.com/${data.file}/`;
+    console.log("✅ Uploaded to Uploadcare (via proxy):", fileUrl);
+    return fileUrl;
+  }
+
   async function sendAudio(blob) {
     try {
       console.log("📤 Uploading audio to proxy...");
+      status.textContent = "Uploading audio...";
 
-      const formData = new FormData();
-      formData.append('file', blob);
+      const uploadcareUrl = await uploadToProxy(blob);
 
-      const proxyRes = await fetch(`${BASE_URL}/uploadcare-proxy`, {
-        method: "POST",
-        body: formData
-      });
-
-      if (!proxyRes.ok) {
-        const errorText = await proxyRes.text();
-        throw new Error(`Proxy upload failed: ${proxyRes.status} - ${errorText}`);
-      }
-
-      const uploadData = await proxyRes.json();
-      const uploadcareUrl = `https://ucarecdn.com/${uploadData.file}/`;
-
-      console.log("📡 Sending Uploadcare URL to Hume API server...");
+      console.log("📡 Sending Uploadcare URL to server...");
       status.textContent = "Analyzing emotion...";
 
       const res = await fetch(`${BASE_URL}/predict`, {
         method: "POST",
-        headers: { "Accept": "application/json", "Content-Type": "application/json" },
+        headers: {
+          "Accept": "application/json",
+          "Content-Type": "application/json"
+        },
         body: JSON.stringify({ audio_url: uploadcareUrl })
       });
 
@@ -170,7 +178,7 @@ window.addEventListener("DOMContentLoaded", () => {
     const text = userMessage.value.trim();
     if (!text || !chatId) return;
 
-    chatHistoryEl.innerHTML += `<div class="user">🧑 ${text}</div>`;
+    chatHistoryEl.innerHTML += `<div class="user">🧑‍💻 ${text}</div>`;
     userMessage.value = "";
     chatHistoryEl.scrollTop = chatHistoryEl.scrollHeight;
 
