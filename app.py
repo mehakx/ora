@@ -13,7 +13,7 @@ load_dotenv()
 app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET", "supersecret")
 
-# ✅ Allow CORS from both localhost and production (Netlify)
+# ✅ Allow CORS from both localhost and production (Netlify, Render)
 CORS(app, resources={r"/*": {"origins": [
     "http://localhost:5173",
     "http://localhost:5500",
@@ -22,14 +22,43 @@ CORS(app, resources={r"/*": {"origins": [
 ]}})
 
 HUME_API_KEY = os.getenv("HUME_API_KEY")
+UPLOADCARE_PUBLIC_KEY = os.getenv("UPLOADCARE_PUBLIC_KEY")
 
-# Simple in-memory conversation store
+# In-memory chat store
 conversations = {}
 
 @app.route("/")
 def index():
     return render_template("index.html")
 
+# 🔥 NEW: Uploadcare Proxy Endpoint
+@app.route("/uploadcare-proxy", methods=["POST"])
+def uploadcare_proxy():
+    try:
+        file = request.files['file']
+
+        files = {
+            'file': (file.filename, file.stream, file.mimetype)
+        }
+        data = {
+            'UPLOADCARE_STORE': '1',
+            'UPLOADCARE_PUB_KEY': UPLOADCARE_PUBLIC_KEY
+        }
+
+        response = requests.post(
+            'https://upload.uploadcare.com/multipart/',
+            files=files,
+            data=data
+        )
+
+        return jsonify(response.json()), response.status_code
+
+    except Exception as e:
+        print("❌ Uploadcare proxy error:", e)
+        traceback.print_exc()
+        return jsonify({"error": "Failed to proxy upload"}), 500
+
+# Existing: Analyze Emotion
 @app.route("/predict", methods=["POST"])
 def predict():
     try:
@@ -42,7 +71,6 @@ def predict():
         audio_url = data["audio_url"]
         print("✅ Received audio URL:", audio_url)
 
-        # Step 2: Create a Hume Batch job
         payload = {
             "urls": [audio_url],
             "models": {"prosody": {}}
@@ -67,7 +95,6 @@ def predict():
 
         print(f"⏳ Polling Hume job ID {job_id}...")
 
-        # Step 3: Poll until job is done
         while True:
             time.sleep(3)
             status_response = requests.get(f"https://api.hume.ai/v0/batch/jobs/{job_id}", headers=headers)
@@ -78,7 +105,6 @@ def predict():
             if job_status == "done":
                 break
 
-        # Step 4: Process emotion predictions
         predictions = status_data.get("predictions", [])
         if not predictions:
             return jsonify({"error": "No predictions found"}), 500
@@ -108,6 +134,7 @@ def predict():
         traceback.print_exc()
         return jsonify({"error": "Something went wrong processing your file."}), 500
 
+# Existing: Chat Route
 @app.route("/chat", methods=["POST"])
 def chat():
     try:
@@ -134,4 +161,3 @@ def chat():
 
 if __name__ == "__main__":
     app.run(debug=True)
-
