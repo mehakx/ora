@@ -1,5 +1,3 @@
-// static/scripts.js
-// static/scripts.js
 window.addEventListener("DOMContentLoaded", () => {
   let audioChunks = [];
   let mediaRecorder;
@@ -207,3 +205,4 @@ window.addEventListener("DOMContentLoaded", () => {
   stopButton.disabled = true;
   status.textContent = "Ready to record";
 });
+
