@@ -1,3 +1,5 @@
+// static/scripts.js
+
 window.addEventListener("DOMContentLoaded", () => {
   let audioChunks = [];
   let mediaRecorder;
@@ -47,7 +49,7 @@ window.addEventListener("DOMContentLoaded", () => {
 
           const audioBlob = new Blob(audioChunks, { type: mimeType });
           status.textContent = "Uploading audio...";
-          await uploadToServer(audioBlob);
+          await sendAudio(audioBlob);
 
         } catch (err) {
           console.error("Audio processing error:", err);
@@ -98,19 +100,21 @@ window.addEventListener("DOMContentLoaded", () => {
 
     if (!response.ok) {
       const errorText = await response.text();
-      throw new Error(`Upload failed: ${errorText}`);
+      throw new Error(`Upload failed: ${response.status} - ${errorText}`);
     }
 
     const data = await response.json();
-    const audioUrl = data.file_url;
-    console.log("✅ Uploaded audio to server:", audioUrl);
-
-    await sendForEmotionAnalysis(audioUrl);
+    return data.audio_url;  // Server will return the URL of saved file
   }
 
-  async function sendForEmotionAnalysis(audioUrl) {
+  async function sendAudio(blob) {
     try {
-      console.log("📡 Sending audio URL to analyze...");
+      console.log("📤 Uploading audio to server...");
+      status.textContent = "Uploading audio...";
+
+      const audioUrl = await uploadToServer(blob);
+
+      console.log("📡 Sending saved audio URL to server...");
       status.textContent = "Analyzing emotion...";
 
       const res = await fetch(`${BASE_URL}/predict`, {
@@ -151,7 +155,7 @@ window.addEventListener("DOMContentLoaded", () => {
       status.className = "success";
 
     } catch (err) {
-      console.error("Analysis error:", err);
+      console.error("Upload error:", err);
       status.textContent = `⚠️ Error: ${err.message || "Failed to analyze emotion"}`;
       status.className = "error";
       recordButton.disabled = false;
