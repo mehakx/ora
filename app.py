@@ -3,7 +3,7 @@ import uuid
 import time
 import traceback
 import requests
-from flask import Flask, request, jsonify, render_template, session
+from flask import Flask, request, jsonify, render_template, send_from_directory
 from flask_cors import CORS
 from dotenv import load_dotenv
 
@@ -13,7 +13,10 @@ load_dotenv()
 app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET", "supersecret")
 
-# ✅ Allow CORS from both localhost and production (Netlify)
+# Make sure upload folder exists
+UPLOAD_FOLDER = "static/uploads"
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
 CORS(app, resources={r"/*": {"origins": [
     "http://localhost:5173",
     "http://localhost:5500",
@@ -22,106 +25,30 @@ CORS(app, resources={r"/*": {"origins": [
 ]}})
 
 HUME_API_KEY = os.getenv("HUME_API_KEY")
-UPLOADCARE_PUB_KEY = os.getenv("UPLOADCARE_PUB_KEY")
-
-# Startup validation for API keys
-if not UPLOADCARE_PUB_KEY:
-    print("⚠️ WARNING: UPLOADCARE_PUB_KEY is not set or empty!")
-else:
-    print(f"✅ Using Uploadcare Public Key: {UPLOADCARE_PUB_KEY[:4]}...{UPLOADCARE_PUB_KEY[-4:]}")
-
-# Simple in-memory conversation store
 conversations = {}
 
 @app.route("/")
 def index():
     return render_template("index.html")
 
-@app.route("/uploadcare-proxy", methods=["POST"])
-def uploadcare_proxy():
+@app.route("/upload-audio", methods=["POST"])
+def upload_audio():
     try:
-        print(f"DEBUG: Uploadcare Public Key being used → {UPLOADCARE_PUB_KEY}")
-        
         if 'file' not in request.files:
-            return jsonify({"error": "No file part in the request"}), 400
-            
+            return jsonify({"error": "No file uploaded"}), 400
+
         file = request.files['file']
-        file_content = file.read()
-        file_size = len(file_content)
-        
-        # Set headers with the API key
-        headers = {
-            "Content-Type": "application/json",
-            "UPLOADCARE-PUB-KEY": UPLOADCARE_PUB_KEY
-        }
-        
-        init_payload = {
-            "filename": file.filename,
-            "size": file_size,
-            "content_type": file.content_type
-        }
-        
-        print(f"DEBUG: Init headers: {headers}")
-        print(f"DEBUG: Init payload: {init_payload}")
-        
-        init_response = requests.post(
-            "https://upload.uploadcare.com/multipart/start/",
-            json=init_payload,
-            headers=headers
-        )
-        
-        print(f"Multipart init response: Status={init_response.status_code}, Body={init_response.text}")
-        
-        if init_response.status_code != 200:
-            return jsonify({"error": f"Failed to initialize upload: {init_response.text}"}), 500
-        
-        init_data = init_response.json()
-        upload_url = init_data.get('parts_urls', [])[0]
-        uuid_value = init_data.get('uuid')
-        
-        if not upload_url or not uuid_value:
-            return jsonify({"error": "Missing upload URL or UUID from Uploadcare"}), 500
-        
-        # Upload file part (no need for the public key here)
-        upload_response = requests.put(
-            upload_url,
-            data=file_content,
-            headers={'Content-Type': 'application/octet-stream'}
-        )
-        
-        print(f"Part upload response: Status={upload_response.status_code}")
-        
-        if upload_response.status_code != 200:
-            return jsonify({"error": f"Failed to upload file part: {upload_response.text}"}), 500
-        
-        # Complete with the same header pattern
-        complete_headers = {
-            "Content-Type": "application/json",
-            "UPLOADCARE-PUB-KEY": UPLOADCARE_PUB_KEY
-        }
-        
-        complete_payload = {
-            "uuid": uuid_value
-        }
-        
-        print(f"DEBUG: Complete headers: {complete_headers}")
-        print(f"DEBUG: Complete payload: {complete_payload}")
-        
-        complete_response = requests.post(
-            "https://upload.uploadcare.com/multipart/complete/",
-            json=complete_payload,
-            headers=complete_headers
-        )
-        
-        print(f"Complete upload response: Status={complete_response.status_code}, Body={complete_response.text}")
-        
-        if complete_response.status_code != 200:
-            return jsonify({"error": f"Failed to complete upload: {complete_response.text}"}), 500
-        
-        return jsonify({"file": uuid_value}), 200
-    
+        filename = f"{uuid.uuid4().hex}.webm"
+        file_path = os.path.join(UPLOAD_FOLDER, filename)
+        file.save(file_path)
+
+        public_url = f"https://ora-owjy.onrender.com/static/uploads/{filename}"
+        print(f"✅ File uploaded and available at: {public_url}")
+
+        return jsonify({"url": public_url}), 200
+
     except Exception as e:
-        print("❌ Uploadcare Proxy Error:", e)
+        print("❌ Upload Audio Error:", e)
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
@@ -137,7 +64,6 @@ def predict():
         audio_url = data["audio_url"]
         print("✅ Received audio URL:", audio_url)
 
-        # Step 2: Create a Hume Batch job
         payload = {
             "urls": [audio_url],
             "models": {"prosody": {}}
@@ -162,7 +88,6 @@ def predict():
 
         print(f"⏳ Polling Hume job ID {job_id}...")
 
-        # Step 3: Poll until job is done
         while True:
             time.sleep(3)
             status_response = requests.get(f"https://api.hume.ai/v0/batch/jobs/{job_id}", headers=headers)
@@ -173,7 +98,6 @@ def predict():
             if job_status == "done":
                 break
 
-        # Step 4: Process emotion predictions
         predictions = status_data.get("predictions", [])
         if not predictions:
             return jsonify({"error": "No predictions found"}), 500
