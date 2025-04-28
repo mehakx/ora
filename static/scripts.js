@@ -1,6 +1,5 @@
 // static/scripts.js
 // static/scripts.js
-
 window.addEventListener("DOMContentLoaded", () => {
   let audioChunks = [];
   let mediaRecorder;
@@ -14,17 +13,26 @@ window.addEventListener("DOMContentLoaded", () => {
   const userMessage = document.getElementById("userMessage");
   const sendBtn = document.getElementById("sendBtn");
 
-  const BASE_URL = "https://ora-owjy.onrender.com"; // Change if needed
+  if (!recordButton || !stopButton || !status) {
+    console.error("Error: Missing UI elements");
+    document.body.innerHTML = "<h2>Error: Missing required UI elements</h2>";
+    return;
+  }
+
+  const BASE_URL = "https://ora-owjy.onrender.com";
 
   recordButton.addEventListener("click", async () => {
     try {
       status.textContent = "Requesting microphone access...";
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true, sampleRate: 44100 }
+      });
+
       const mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/wav';
       mediaRecorder = new MediaRecorder(stream, { mimeType });
       audioChunks = [];
 
-      mediaRecorder.ondataavailable = (e) => {
+      mediaRecorder.ondataavailable = e => {
         if (e.data.size > 0) {
           audioChunks.push(e.data);
         }
@@ -33,28 +41,25 @@ window.addEventListener("DOMContentLoaded", () => {
       mediaRecorder.onstop = async () => {
         try {
           status.textContent = "Processing audio...";
-          stream.getTracks().forEach((track) => track.stop());
+          stream.getTracks().forEach(track => track.stop());
 
           if (audioChunks.length === 0) {
             throw new Error("No audio recorded");
           }
 
           const audioBlob = new Blob(audioChunks, { type: mimeType });
-          status.textContent = "Uploading audio to server...";
-          const audioUrl = await uploadToServer(audioBlob);
-
-          status.textContent = "Analyzing emotion...";
-          await analyzeEmotion(audioUrl);
+          status.textContent = "Uploading audio...";
+          await uploadToServer(audioBlob);
 
         } catch (err) {
-          console.error(err);
-          status.textContent = `⚠️ Error: ${err.message}`;
+          console.error("Audio processing error:", err);
+          status.textContent = "⚠️ Error: " + err.message;
           status.className = "error";
           recordButton.disabled = false;
         }
       };
 
-      mediaRecorder.start();
+      mediaRecorder.start(100);
       status.textContent = "🎤 Recording...";
       recordButton.disabled = true;
       stopButton.disabled = false;
@@ -68,17 +73,17 @@ window.addEventListener("DOMContentLoaded", () => {
       }, 5000);
 
     } catch (err) {
-      console.error(err);
-      alert("Microphone access denied.");
-      status.textContent = `⚠️ Error: ${err.message}`;
+      console.error("Microphone access error:", err);
+      status.textContent = "⚠️ Error: " + (err.message || "Microphone access denied");
       status.className = "error";
+      alert("Please enable microphone access in your browser settings.");
     }
   });
 
   stopButton.addEventListener("click", () => {
     if (mediaRecorder && mediaRecorder.state === "recording") {
       mediaRecorder.stop();
-      status.textContent = "Processing audio...";
+      status.textContent = "Processing...";
       stopButton.disabled = true;
       recordButton.disabled = false;
     }
@@ -86,11 +91,11 @@ window.addEventListener("DOMContentLoaded", () => {
 
   async function uploadToServer(blob) {
     const formData = new FormData();
-    formData.append("file", blob);
+    formData.append('file', blob);
 
     const response = await fetch(`${BASE_URL}/upload`, {
-      method: "POST",
-      body: formData,
+      method: 'POST',
+      body: formData
     });
 
     if (!response.ok) {
@@ -99,44 +104,65 @@ window.addEventListener("DOMContentLoaded", () => {
     }
 
     const data = await response.json();
-    console.log("✅ File uploaded, server URL:", data.url);
-    return data.url;
+    const audioUrl = data.file_url;
+    console.log("✅ Uploaded audio to server:", audioUrl);
+
+    await sendForEmotionAnalysis(audioUrl);
   }
 
-  async function analyzeEmotion(audioUrl) {
-    const res = await fetch(`${BASE_URL}/predict`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ audio_url: audioUrl }),
-    });
+  async function sendForEmotionAnalysis(audioUrl) {
+    try {
+      console.log("📡 Sending audio URL to analyze...");
+      status.textContent = "Analyzing emotion...";
 
-    if (!res.ok) {
-      const errorText = await res.text();
-      throw new Error(`Server error: ${errorText}`);
+      const res = await fetch(`${BASE_URL}/predict`, {
+        method: "POST",
+        headers: {
+          "Accept": "application/json",
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ audio_url: audioUrl })
+      });
+
+      if (!res.ok) {
+        const errorText = await res.text();
+        throw new Error(`Server error (${res.status}): ${errorText}`);
+      }
+
+      const data = await res.json();
+
+      if (!data || !data.probabilities) {
+        throw new Error("Invalid response format: missing emotion data");
+      }
+
+      const parts = Object.entries(data.probabilities)
+        .sort((a, b) => b[1] - a[1])
+        .map(([emo, pct]) => `${emo}: ${pct}%`);
+
+      const sentence = `You're feeling: ${parts.join(", ")}`;
+
+      chatHistoryEl.innerHTML = `
+        <div class="assistant">📝 ${sentence}</div>
+        <br>
+        <div class="assistant">🤖 ${data.reply || "How can I help you today?"}</div>
+      `;
+
+      chatId = data.chat_id;
+      chatDiv.classList.remove("hidden");
+      status.textContent = "✅ Emotion analysis complete";
+      status.className = "success";
+
+    } catch (err) {
+      console.error("Analysis error:", err);
+      status.textContent = `⚠️ Error: ${err.message || "Failed to analyze emotion"}`;
+      status.className = "error";
+      recordButton.disabled = false;
+      alert(`Analysis failed: ${err.message || "Server error"}`);
     }
-
-    const data = await res.json();
-    if (!data || !data.probabilities) {
-      throw new Error("Invalid emotion analysis response");
-    }
-
-    const parts = Object.entries(data.probabilities)
-      .sort((a, b) => b[1] - a[1])
-      .map(([emo, pct]) => `${emo}: ${pct}%`);
-    const sentence = `You're feeling: ${parts.join(", ")}`;
-
-    chatHistoryEl.innerHTML = `
-      <div class="assistant">📝 ${sentence}</div><br>
-      <div class="assistant">🤖 ${data.reply || "How can I help you today?"}</div>
-    `;
-
-    chatId = data.chat_id;
-    chatDiv.classList.remove("hidden");
-    status.textContent = "✅ Emotion analysis complete";
-    status.className = "success";
   }
 
   sendBtn.addEventListener("click", sendMessage);
+
   userMessage.addEventListener("keypress", (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -156,25 +182,28 @@ window.addEventListener("DOMContentLoaded", () => {
       const res = await fetch(`${BASE_URL}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ chat_id: chatId, message: text }),
+        body: JSON.stringify({ chat_id: chatId, message: text })
       });
 
       if (!res.ok) {
         const errorText = await res.text();
-        throw new Error(`Chat server error: ${errorText}`);
+        throw new Error(`Server error (${res.status}): ${errorText}`);
       }
 
       const data = await res.json();
-      chatHistoryEl.innerHTML += `<div class="assistant">🤖 ${data.reply || "I'm thinking..."}</div>`;
+
+      if (data.error) throw new Error(data.error);
+
+      chatHistoryEl.innerHTML += `<div class="assistant">🤖 ${data.reply || "I'm processing your message."}</div>`;
       chatHistoryEl.scrollTop = chatHistoryEl.scrollHeight;
 
     } catch (err) {
-      console.error(err);
-      chatHistoryEl.innerHTML += `<div class="error">⚠️ ${err.message}</div>`;
+      console.error("Chat error:", err);
+      chatHistoryEl.innerHTML += `<div class="error">⚠️ Error: ${err.message || "Failed to send message"}</div>`;
       chatHistoryEl.scrollTop = chatHistoryEl.scrollHeight;
     }
   }
 
   stopButton.disabled = true;
-  status.textContent = "Ready to record!";
+  status.textContent = "Ready to record";
 });
