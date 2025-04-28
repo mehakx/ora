@@ -1,5 +1,3 @@
-# FINAL app.py (Direct Server Upload)
-
 # Final working app.py (direct server upload to /static/uploads)
 
 import os
