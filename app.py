@@ -1,11 +1,11 @@
-# Final working app.py (direct server upload to /static/uploads)
+# Final working app.py with local upload route
 
 import os
 import uuid
 import time
 import traceback
 import requests
-from flask import Flask, request, jsonify, render_template, send_from_directory
+from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS
 from dotenv import load_dotenv
 
@@ -15,17 +15,12 @@ load_dotenv()
 app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET", "supersecret")
 
-# CORS settings
 CORS(app, resources={r"/*": {"origins": [
     "http://localhost:5173",
     "http://localhost:5500",
     "https://your-netlify-site.netlify.app",
     "https://ora-owjy.onrender.com"
 ]}})
-
-# Make sure the uploads folder exists
-UPLOAD_FOLDER = "static/uploads"
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 HUME_API_KEY = os.getenv("HUME_API_KEY")
 
@@ -35,25 +30,26 @@ conversations = {}
 def index():
     return render_template("index.html")
 
+# New Upload Route
 @app.route("/upload", methods=["POST"])
-def upload_to_server():
+def upload_audio():
     try:
         if 'file' not in request.files:
             return jsonify({"error": "No file uploaded"}), 400
 
         file = request.files['file']
         filename = uuid.uuid4().hex + ".webm"
-        save_path = os.path.join(UPLOAD_FOLDER, filename)
+        upload_folder = os.path.join("static", "uploads")
+        os.makedirs(upload_folder, exist_ok=True)
 
-        file.save(save_path)
+        file_path = os.path.join(upload_folder, filename)
+        file.save(file_path)
 
-        file_url = f"/static/uploads/{filename}"
-        print(f"✅ File uploaded and saved: {file_url}")
-
-        return jsonify({"file_url": file_url}), 200
+        public_url = f"/static/uploads/{filename}"
+        return jsonify({"url": public_url}), 200
 
     except Exception as e:
-        print("❌ Upload to server error:", e)
+        print("\u274c Upload Error:", e)
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
@@ -67,11 +63,10 @@ def predict():
             return jsonify({"error": "No audio URL received"}), 400
 
         audio_url = data["audio_url"]
-        full_audio_url = f"https://ora-owjy.onrender.com{audio_url}"
-        print("✅ Full audio URL:", full_audio_url)
+        print("✅ Received audio URL:", audio_url)
 
         payload = {
-            "urls": [full_audio_url],
+            "urls": [audio_url],
             "models": {"prosody": {}}
         }
         headers = {
@@ -79,7 +74,7 @@ def predict():
             "Content-Type": "application/json"
         }
 
-        print("✅ Submitting to Hume API...")
+        print("✅ Submitting batch job...")
         response = requests.post("https://api.hume.ai/v0/batch/jobs", headers=headers, json=payload)
 
         if response.status_code != 200:
@@ -90,20 +85,23 @@ def predict():
         job_id = job_data.get("job_id")
 
         if not job_id:
-            return jsonify({"error": "No job_id returned"}), 500
+            return jsonify({"error": "No job_id returned from Hume API"}), 500
 
-        print(f"⏳ Polling Hume job {job_id}...")
+        print(f"⏳ Polling Hume job ID {job_id}...")
 
         while True:
             time.sleep(3)
             status_response = requests.get(f"https://api.hume.ai/v0/batch/jobs/{job_id}", headers=headers)
             status_data = status_response.json()
-            if status_data.get("status") == "done":
+            job_status = status_data.get("status")
+
+            print(f"🔄 Job status: {job_status}")
+            if job_status == "done":
                 break
 
         predictions = status_data.get("predictions", [])
         if not predictions:
-            return jsonify({"error": "No predictions"}), 500
+            return jsonify({"error": "No predictions found"}), 500
 
         emotions = predictions[0]["models"]["prosody"]["grouped_predictions"][0]["predictions"][0]["emotions"]
         top_emotion = max(emotions, key=lambda emo: emo["score"])
@@ -113,8 +111,8 @@ def predict():
 
         chat_id = uuid.uuid4().hex
         conversations[chat_id] = [
-            {"role": "system", "content": "You are a compassionate assistant."},
-            {"role": "user", "content": f"I am feeling {top_emotion['name']}."},
+            {"role": "system",    "content": "You are a compassionate assistant."},
+            {"role": "user",      "content": f"I am feeling {top_emotion['name']}."},
             {"role": "assistant", "content": reply}
         ]
 
@@ -128,7 +126,7 @@ def predict():
     except Exception as e:
         print("❌ Prediction error:", e)
         traceback.print_exc()
-        return jsonify({"error": "Something went wrong during prediction."}), 500
+        return jsonify({"error": "Something went wrong processing your file."}), 500
 
 @app.route("/chat", methods=["POST"])
 def chat():
@@ -138,7 +136,7 @@ def chat():
         user_msg = data.get("message", "").strip()
 
         if not chat_id or chat_id not in conversations:
-            return jsonify({"error": "Invalid chat_id"}), 400
+            return jsonify({"error": "Invalid or missing chat_id"}), 400
         if not user_msg:
             return jsonify({"error": "Empty message"}), 400
 
