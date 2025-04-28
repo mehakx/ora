@@ -205,4 +205,3 @@ window.addEventListener("DOMContentLoaded", () => {
   stopButton.disabled = true;
   status.textContent = "Ready to record";
 });
-
