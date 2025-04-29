@@ -1,4 +1,4 @@
- // static/scripts.js
+// static/scripts.js
 
 window.addEventListener("DOMContentLoaded", () => {
   let audioChunks = [];
