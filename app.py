@@ -72,9 +72,12 @@ def upload_audio():
             else:
                 raise file_error
 
-        base_url = request.url_root.rstrip('/')
+        # Create a fully qualified URL with domain name
+        base_url = "https://ora-owjy.onrender.com"  # Your deployed app URL
         public_url = f"{base_url}/static/uploads/{filename}"
-        return jsonify({"url": public_url}), 200
+        
+        # Match the property name expected by the frontend
+        return jsonify({"audio_url": public_url}), 200
 
     except Exception as e:
         print(f"❌ Upload Error: {e}")
