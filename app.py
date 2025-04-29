@@ -1,11 +1,11 @@
-# Final working app.py with fixed local upload route
+# Final working app.py with improved error handling
 
 import os
 import uuid
 import time
 import traceback
 import requests
-from flask import Flask, request, jsonify, render_template
+from flask import Flask, request, jsonify, render_template, url_for
 from flask_cors import CORS
 from dotenv import load_dotenv
 
@@ -24,21 +24,28 @@ CORS(app, resources={r"/*": {"origins": [
 
 HUME_API_KEY = os.getenv("HUME_API_KEY")
 
-# Create upload directory at startup
+# Create upload directory at startup - with better error handling
 UPLOAD_FOLDER = os.path.join("static", "uploads")
+print(f"⚙️ Current working directory: {os.getcwd()}")
+print(f"⚙️ Attempting to set up upload folder: {UPLOAD_FOLDER}")
+
 try:
-    # Check if it's a file first
-    if os.path.isfile(UPLOAD_FOLDER):
-        # If it's a file, remove it and create as directory
-        os.remove(UPLOAD_FOLDER)
-        os.makedirs(UPLOAD_FOLDER)
-    elif not os.path.exists(UPLOAD_FOLDER):
-        # Create directory only if it doesn't exist
-        os.makedirs(UPLOAD_FOLDER)
+    if not os.path.exists("static"):
+        print("📁 Creating static directory")
+        os.makedirs("static")
     
+    if os.path.isfile(UPLOAD_FOLDER):
+        print(f"🔄 Removing file at {UPLOAD_FOLDER} to create directory")
+        os.remove(UPLOAD_FOLDER)
+    
+    if not os.path.exists(UPLOAD_FOLDER):
+        print(f"📁 Creating uploads directory: {UPLOAD_FOLDER}")
+        os.makedirs(UPLOAD_FOLDER)
+        
     print(f"✅ Upload directory ready: {UPLOAD_FOLDER}")
 except Exception as e:
-    print(f"⚠️ Warning: Could not prepare upload directory: {e}")
+    print(f"⚠️ Warning: Could not prepare upload directory: {str(e)}")
+    traceback.print_exc()
 
 conversations = {}
 
@@ -46,55 +53,53 @@ conversations = {}
 def index():
     return render_template("index.html")
 
-# Fixed Upload Route
+# Fixed Upload Route with better error handling
 @app.route("/upload", methods=["POST"])
 def upload_audio():
     try:
+        print("⚙️ Processing upload request")
         if 'file' not in request.files:
+            print("❌ No file in request")
             return jsonify({"error": "No file uploaded"}), 400
 
         file = request.files['file']
-        filename = uuid.uuid4().hex + ".webm"
+        print(f"✅ Received file: {file.filename}")
         
-        # Don't try to create the directory again here
+        filename = uuid.uuid4().hex + ".webm"
         file_path = os.path.join(UPLOAD_FOLDER, filename)
         
-        try:
-            file.save(file_path)
-            print(f"✅ File saved successfully: {file_path}")
-        except Exception as file_error:
-            print(f"❌ File save error: {file_error}")
-            # Try to create the directory if saving failed
-            if not os.path.exists(UPLOAD_FOLDER):
-                os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-                file.save(file_path)
-                print(f"✅ Retry successful: {file_path}")
-            else:
-                raise file_error
-
-        # Create a fully qualified URL with domain name
-        base_url = "https://ora-owjy.onrender.com"  # Your deployed app URL
-        public_url = f"{base_url}/static/uploads/{filename}"
+        print(f"⚙️ Attempting to save file to: {file_path}")
         
-        # Match the property name expected by the frontend
+        # Ensure directory exists before saving
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
+        
+        file.save(file_path)
+        print(f"✅ File saved successfully: {file_path}")
+        
+        # Create a fully qualified URL
+        host = request.host_url.rstrip('/')
+        public_url = f"{host}/static/uploads/{filename}"
+        print(f"🔗 File URL: {public_url}")
+        
         return jsonify({"audio_url": public_url}), 200
 
     except Exception as e:
-        print(f"❌ Upload Error: {e}")
+        print(f"❌ Upload Error: {str(e)}")
         traceback.print_exc()
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": f"Upload failed: {str(e)}"}), 500
 
 @app.route("/predict", methods=["POST"])
 def predict():
     try:
         data = request.get_json()
-        print("✅ Received data:", data)
+        print("⚙️ Predict request data:", data)
 
         if not data or "audio_url" not in data:
+            print("❌ No audio URL in request")
             return jsonify({"error": "No audio URL received"}), 400
 
         audio_url = data["audio_url"]
-        print("✅ Received audio URL:", audio_url)
+        print(f"🔗 Processing audio URL: {audio_url}")
 
         payload = {
             "urls": [audio_url],
@@ -105,33 +110,46 @@ def predict():
             "Content-Type": "application/json"
         }
 
-        print("✅ Submitting batch job...")
+        print("⚙️ Submitting batch job to Hume...")
         response = requests.post("https://api.hume.ai/v0/batch/jobs", headers=headers, json=payload)
+        
+        print(f"⚙️ Hume API response: {response.status_code}")
+        print(f"⚙️ Hume API body: {response.text[:200]}...")  # Print first 200 chars
 
         if response.status_code != 200:
             print(f"❌ Failed to create Hume job: {response.text}")
-            return jsonify({"error": "Failed to create Hume job"}), 500
+            return jsonify({"error": f"Failed to create Hume job: {response.text}"}), 500
 
         job_data = response.json()
         job_id = job_data.get("job_id")
 
         if not job_id:
+            print("❌ No job_id in Hume response")
             return jsonify({"error": "No job_id returned from Hume API"}), 500
 
         print(f"⏳ Polling Hume job ID {job_id}...")
 
-        while True:
+        max_attempts = 20
+        attempt = 0
+        
+        while attempt < max_attempts:
+            attempt += 1
             time.sleep(3)
             status_response = requests.get(f"https://api.hume.ai/v0/batch/jobs/{job_id}", headers=headers)
             status_data = status_response.json()
             job_status = status_data.get("status")
 
-            print(f"🔄 Job status: {job_status}")
+            print(f"🔄 Job status ({attempt}/{max_attempts}): {job_status}")
             if job_status == "done":
                 break
+                
+        if job_status != "done":
+            print("❌ Hume job timed out")
+            return jsonify({"error": "Hume processing timed out"}), 500
 
         predictions = status_data.get("predictions", [])
         if not predictions:
+            print("❌ No predictions in Hume response")
             return jsonify({"error": "No predictions found"}), 500
 
         emotions = predictions[0]["models"]["prosody"]["grouped_predictions"][0]["predictions"][0]["emotions"]
@@ -157,7 +175,7 @@ def predict():
     except Exception as e:
         print("❌ Prediction error:", e)
         traceback.print_exc()
-        return jsonify({"error": "Something went wrong processing your file."}), 500
+        return jsonify({"error": f"Analysis failed: {str(e)}"}), 500
 
 @app.route("/chat", methods=["POST"])
 def chat():
@@ -181,7 +199,7 @@ def chat():
     except Exception as e:
         print("❌ Chat error:", e)
         traceback.print_exc()
-        return jsonify({"error": "Something went wrong during chat."}), 500
+        return jsonify({"error": f"Chat error: {str(e)}"}), 500
 
 if __name__ == "__main__":
     app.run(debug=True)
