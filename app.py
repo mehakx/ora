@@ -1,4 +1,4 @@
-# Final working app.py with local upload route
+# Final working app.py with fixed local upload route
 
 import os
 import uuid
@@ -24,13 +24,29 @@ CORS(app, resources={r"/*": {"origins": [
 
 HUME_API_KEY = os.getenv("HUME_API_KEY")
 
+# Create upload directory at startup
+UPLOAD_FOLDER = os.path.join("static", "uploads")
+try:
+    # Check if it's a file first
+    if os.path.isfile(UPLOAD_FOLDER):
+        # If it's a file, remove it and create as directory
+        os.remove(UPLOAD_FOLDER)
+        os.makedirs(UPLOAD_FOLDER)
+    elif not os.path.exists(UPLOAD_FOLDER):
+        # Create directory only if it doesn't exist
+        os.makedirs(UPLOAD_FOLDER)
+    
+    print(f"✅ Upload directory ready: {UPLOAD_FOLDER}")
+except Exception as e:
+    print(f"⚠️ Warning: Could not prepare upload directory: {e}")
+
 conversations = {}
 
 @app.route("/")
 def index():
     return render_template("index.html")
 
-# New Upload Route
+# Fixed Upload Route
 @app.route("/upload", methods=["POST"])
 def upload_audio():
     try:
@@ -39,17 +55,29 @@ def upload_audio():
 
         file = request.files['file']
         filename = uuid.uuid4().hex + ".webm"
-        upload_folder = os.path.join("static", "uploads")
-        os.makedirs(upload_folder, exist_ok=True)
+        
+        # Don't try to create the directory again here
+        file_path = os.path.join(UPLOAD_FOLDER, filename)
+        
+        try:
+            file.save(file_path)
+            print(f"✅ File saved successfully: {file_path}")
+        except Exception as file_error:
+            print(f"❌ File save error: {file_error}")
+            # Try to create the directory if saving failed
+            if not os.path.exists(UPLOAD_FOLDER):
+                os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+                file.save(file_path)
+                print(f"✅ Retry successful: {file_path}")
+            else:
+                raise file_error
 
-        file_path = os.path.join(upload_folder, filename)
-        file.save(file_path)
-
-        public_url = f"/static/uploads/{filename}"
+        base_url = request.url_root.rstrip('/')
+        public_url = f"{base_url}/static/uploads/{filename}"
         return jsonify({"url": public_url}), 200
 
     except Exception as e:
-        print("\u274c Upload Error:", e)
+        print(f"❌ Upload Error: {e}")
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
