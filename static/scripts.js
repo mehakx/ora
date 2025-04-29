@@ -15,6 +15,7 @@ window.addEventListener("DOMContentLoaded", () => {
 
   if (!recordButton || !stopButton || !status) {
     console.error("Missing UI elements");
+    document.body.innerHTML = "<h2>Error: Missing required UI elements</h2>";
     return;
   }
 
@@ -23,8 +24,16 @@ window.addEventListener("DOMContentLoaded", () => {
   // Start recording
   recordButton.addEventListener("click", async () => {
     try {
+      status.textContent = "Requesting microphone access...";
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        audio: { 
+          echoCancellation: true, 
+          noiseSuppression: true, 
+          sampleRate: 44100 
+        } 
+      });
+      
       status.textContent = "🎤 Recording...";
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/wav';
       mediaRecorder = new MediaRecorder(stream, { mimeType });
       audioChunks = [];
@@ -34,22 +43,32 @@ window.addEventListener("DOMContentLoaded", () => {
       };
 
       mediaRecorder.onstop = async () => {
-        stream.getTracks().forEach(t => t.stop());
-        if (audioChunks.length === 0) {
-          status.textContent = "⚠️ No audio recorded";
-          return;
+        try {
+          status.textContent = "Processing audio...";
+          stream.getTracks().forEach(t => t.stop());
+          
+          if (audioChunks.length === 0) {
+            status.textContent = "⚠️ No audio recorded";
+            recordButton.disabled = false;
+            return;
+          }
+          
+          const audioBlob = new Blob(audioChunks, { type: mimeType });
+          await analyzeAudio(audioBlob);
+        } catch (err) {
+          console.error("Audio processing error:", err);
+          status.textContent = "⚠️ Error: " + err.message;
+          recordButton.disabled = false;
         }
-        const audioBlob = new Blob(audioChunks, { type: mimeType });
-        await analyzeAudio(audioBlob);
       };
 
-      mediaRecorder.start();
+      mediaRecorder.start(100);
       recordButton.disabled = true;
       stopButton.disabled = false;
 
       // Auto-stop after 5 seconds
       setTimeout(() => {
-        if (mediaRecorder.state === "recording") {
+        if (mediaRecorder && mediaRecorder.state === "recording") {
           mediaRecorder.stop();
           stopButton.disabled = true;
           recordButton.disabled = false;
@@ -59,6 +78,7 @@ window.addEventListener("DOMContentLoaded", () => {
     } catch (err) {
       console.error("Recording error:", err);
       status.textContent = "⚠️ " + err.message;
+      alert("Please enable microphone access in your browser settings.");
     }
   });
 
@@ -68,6 +88,7 @@ window.addEventListener("DOMContentLoaded", () => {
       mediaRecorder.stop();
       stopButton.disabled = true;
       recordButton.disabled = false;
+      status.textContent = "Processing...";
     }
   });
 
@@ -75,6 +96,8 @@ window.addEventListener("DOMContentLoaded", () => {
   async function analyzeAudio(blob) {
     try {
       status.textContent = "🔄 Analyzing audio...";
+      
+      console.log("📤 Sending audio for analysis...");
       const form = new FormData();
       form.append("audio", blob, "recording.webm");
 
@@ -82,22 +105,35 @@ window.addEventListener("DOMContentLoaded", () => {
         method: "POST",
         body: form
       });
+      
+      console.log(`Response status: ${res.status}`);
+      
       if (!res.ok) {
         const text = await res.text();
+        console.error(`Server error: ${text}`);
         throw new Error(`Server error (${res.status}): ${text}`);
       }
 
       const data = await res.json();
+      console.log("Analysis response:", data);
+      
+      if (!data || !data.emotion) {
+        throw new Error("Invalid response format from server");
+      }
+      
       const { emotion, probabilities, reply, chat_id } = data;
 
       // Display results
       const probsArr = Object.entries(probabilities)
+        .sort((a, b) => b[1] - a[1])
         .map(([emo, pct]) => `${emo}: ${pct}%`)
         .join(', ');
+        
       chatHistoryEl.innerHTML = `
         <div class="assistant">📝 You're feeling: ${probsArr}</div>
         <div class="assistant">🤖 ${reply}</div>
       `;
+      
       chatId = chat_id;
       chatDiv.classList.remove("hidden");
       status.textContent = "✅ Analysis complete";
@@ -105,6 +141,7 @@ window.addEventListener("DOMContentLoaded", () => {
     } catch (err) {
       console.error("Analysis error:", err);
       status.textContent = "⚠️ " + err.message;
+      recordButton.disabled = false;
     }
   }
 
@@ -120,19 +157,31 @@ window.addEventListener("DOMContentLoaded", () => {
   async function sendMessage() {
     const text = userMessage.value.trim();
     if (!text || !chatId) return;
+    
     chatHistoryEl.innerHTML += `<div class="user">🧑‍💻 ${text}</div>`;
     userMessage.value = "";
+    chatHistoryEl.scrollTop = chatHistoryEl.scrollHeight;
+    
     try {
       const resp = await fetch(`${BASE_URL}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ chat_id: chatId, message: text })
       });
-      if (!resp.ok) throw new Error(await resp.text());
+      
+      if (!resp.ok) {
+        const errorText = await resp.text();
+        throw new Error(errorText);
+      }
+      
       const chatData = await resp.json();
       chatHistoryEl.innerHTML += `<div class="assistant">🤖 ${chatData.reply}</div>`;
+      chatHistoryEl.scrollTop = chatHistoryEl.scrollHeight;
+      
     } catch (err) {
       console.error("Chat error:", err);
+      chatHistoryEl.innerHTML += `<div class="error">⚠️ Error: ${err.message}</div>`;
+      chatHistoryEl.scrollTop = chatHistoryEl.scrollHeight;
     }
   }
 
