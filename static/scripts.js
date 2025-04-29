@@ -104,7 +104,8 @@ window.addEventListener("DOMContentLoaded", () => {
     }
 
     const data = await response.json();
-    return data.audio_url;  // Server will return the URL of saved file
+    console.log("Server response:", data); // Debug log to see what's returned
+    return data.audio_url;  // Expect server to return audio_url property
   }
 
   async function sendAudio(blob) {
@@ -113,6 +114,11 @@ window.addEventListener("DOMContentLoaded", () => {
       status.textContent = "Uploading audio...";
 
       const audioUrl = await uploadToServer(blob);
+      console.log("📡 Received URL from server:", audioUrl); // Add debug log
+
+      if (!audioUrl) {
+        throw new Error("No URL received from server");
+      }
 
       console.log("📡 Sending saved audio URL to server...");
       status.textContent = "Analyzing emotion...";
