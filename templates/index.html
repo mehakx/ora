@@ -3,25 +3,19 @@
 <head>
   <meta charset="UTF-8" />
   <title>Emotion Analyzer</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
+  <link rel="stylesheet" href="/static/styles.css" />
 </head>
 <body>
-  <header><h1>Emotion Analyzer</h1></header>
+  <header>
+    <h1>Emotion Analyzer</h1>
+  </header>
   <main>
-    <button id="recordBtn">🎤 Record</button>
-    <button id="stopBtn" disabled>⏹ Stop</button>
-    <p id="status"></p>
-
-    <!-- Chat box (hidden until after first analysis) -->
-    <div id="chat" class="hidden">
-      <div id="chatHistory" class="chat-history"></div>
-      <div class="chat-input">
-        <input type="text" id="userMessage" placeholder="Type your message…" />
-        <button id="sendBtn">Send</button>
-      </div>
-    </div>
+    <button id="record">🎤 Record</button>
+    <button id="stop" disabled>⏹ Stop</button>
+    <p id="status">— waiting for you to speak —</p>
+    <p id="result"></p>
   </main>
-  <script src="{{ url_for('static', filename='scripts.js') }}"></script>
+  <script src="/static/scripts.js"></script>
 </body>
 </html>
 
