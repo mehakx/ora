@@ -2,37 +2,10 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Emotion Analyzer</title>
-  <link rel="stylesheet" href="/static/styles.css" />
-</head>
-<body>
-  <header>
-    <h1>Emotion Analyzer</h1>
-  </header>
-  <main>
-    <button id="record">🎤 Record</button>
-    <button id="stop" disabled>⏹ Stop</button>
-    <p id="status">— waiting for you to speak —</p>
-    <p id="result"></p>
-  </main>
-  <script src="/static/scripts.js"></script>
-</body>
-</html>
-
-
-
-<!-- <!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
   <title>Ora Emotion Analyzer</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
   <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" />
-
   <script src="{{ url_for('static', filename='scripts.js') }}" defer></script>
-
-
-
 </head>
 <body>
   <header>
@@ -42,25 +15,14 @@
   <main>
     <button id="recordBtn">🎤 Record</button>
     <button id="stopBtn" disabled>⏹ Stop</button>
-    
 
     <p id="status">Press “Record” and speak for a few seconds.</p>
-    <p id="emotionLabel"></p>
-    <p id="chatReply"></p>
 
-  
     <div id="result" class="hidden">
       <p><strong>Emotion:</strong> <span id="emotionLabel">—</span></p>
-      <p><strong>Reply:</strong> <span id="chatReply">—</span></p>
+      <p><strong>Reply:</strong> <span id="replyLabel">—</span></p>
     </div>
-    <div id="chat" class="hidden">
-        <div id="chatHistory" class="chat-history"></div>
-        <div class="chat-input">
-          <input type="text" id="userMessage" placeholder="Type your message…" />
-          <button id="sendBtn">Send</button>
-        </div>
-      </div>
-      
   </main>
 </body>
-</html> -->
+</html>
+
