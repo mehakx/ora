@@ -1,8 +1,5 @@
-Flask
+flask
 flask-cors
-requests
 python-dotenv
-pydub
-gunicorn
-hume
+openai
 
