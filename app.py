@@ -1,5 +1,6 @@
 import os
-from flask import Flask, request, jsonify, render_template
+import json
+from flask import Flask, request, jsonify, render_template, send_from_directory
 from flask_cors import CORS
 import openai
 from dotenv import load_dotenv
@@ -21,36 +22,41 @@ def analyze():
     if not text:
         return jsonify({"error": "No text provided"}), 400
 
-    # Ask GPT to classify emotion
+    # Prompt GPT to classify emotion & craft a response in JSON
     prompt = (
-        "Classify the primary emotion expressed in the following text. "
-        "Respond in JSON with keys 'emotion' (one word, e.g. Happy, Sad, Angry, Neutral) "
-        "and 'message' (a short empathetic response).\n\n"
+        "Classify the primary emotion expressed in the following text as one word "
+        "(e.g. Happy, Sad, Angry, Neutral), then write a short empathetic response. "
+        "Return output as valid JSON with keys 'emotion' and 'message'.\n\n"
         f"Text: \"{text}\""
     )
 
     try:
         resp = openai.ChatCompletion.create(
             model="gpt-3.5-turbo",
-            messages=[{"role":"user","content":prompt}],
+            messages=[{"role": "user", "content": prompt}],
             temperature=0.7,
-            max_tokens=60,
+            max_tokens=80,
         )
         content = resp.choices[0].message.content.strip()
-        # We expect the model to output something like:
-        # {"emotion":"Happy","message":"I can feel your excitement! Keep it going."}
-        parsed = {}
-        try:
-            parsed = json.loads(content)
-        except:
-            # fallback: parse manually
-            lines = [l for l in content.splitlines() if ":" in l]
-            for l in lines:
-                k,v = l.split(":",1)
-                parsed[k.strip().strip('"')] = v.strip().strip('",')
-        return jsonify(parsed)
+
+        # Try to parse as JSON
+        parsed = json.loads(content)
+        emotion = parsed.get("emotion", "Neutral")
+        message = parsed.get("message", "")
+
+    except json.JSONDecodeError:
+        # Fallback: crude manual parse
+        emotion = "Neutral"
+        message = ""
+        for line in content.splitlines():
+            if line.lower().startswith("emotion"):
+                emotion = line.split(":", 1)[1].strip().strip('"')
+            if line.lower().startswith("message"):
+                message = line.split(":", 1)[1].strip().strip('"')
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+    return jsonify({"emotion": emotion, "message": message})
 
 if __name__ == "__main__":
     app.run(debug=True)
